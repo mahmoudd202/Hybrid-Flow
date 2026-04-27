@@ -51,6 +51,18 @@ public class RequestController {
         );
     }
 
+    @DeleteMapping("/{requestId}")
+    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
+    public ResponseEntity<Void> deleteRequest(
+            @PathVariable Long requestId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) return ResponseEntity.status(401).build();
+
+        requestService.deleteRequest(requestId, userDetails.getUser());
+        return ResponseEntity.noContent().build();
+    }
+
     // ──────────────────────────────────────────────────────────
     //  HR ENDPOINTS
     // ──────────────────────────────────────────────────────────

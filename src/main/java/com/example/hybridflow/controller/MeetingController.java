@@ -31,10 +31,37 @@ public class MeetingController {
             @Valid @RequestBody MeetingRequestDTO dto,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        if (userDetails == null) return ResponseEntity.status(401).build();
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
 
         MeetingDTO response = meetingService.createMeeting(dto, userDetails.getUser());
         return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{meetingId}")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<Void> deleteMeeting(
+            @PathVariable Long meetingId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
+
+        meetingService.deleteMeeting(meetingId, userDetails.getUser());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{meetingId}")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<MeetingDTO> updateMeeting(
+            @PathVariable Long meetingId,
+            @Valid @RequestBody MeetingRequestDTO dto,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
+
+        return ResponseEntity.ok(meetingService.updateMeeting(meetingId, dto, userDetails.getUser()));
     }
 
     @GetMapping("/my-schedule")
@@ -42,7 +69,8 @@ public class MeetingController {
     public ResponseEntity<List<MeetingDTO>> getMyMeetingSchedule(
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        if (userDetails == null) return ResponseEntity.status(401).build();
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
 
         User currentUser = userDetails.getUser();
 
@@ -51,8 +79,7 @@ public class MeetingController {
         }
 
         return ResponseEntity.ok(
-                meetingService.getTeamMeetings(currentUser.getTeam().getId())
-        );
+                meetingService.getTeamMeetings(currentUser.getTeam().getId()));
     }
 
     @GetMapping("/team/{teamId}")
@@ -61,28 +88,18 @@ public class MeetingController {
             @PathVariable Long teamId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        if (userDetails == null) return ResponseEntity.status(401).build();
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
 
         User currentUser = userDetails.getUser();
         enforceTeamMeetingAccess(currentUser, teamId);
 
         return ResponseEntity.ok(
-                meetingService.getTeamMeetings(teamId)
-        );
+                meetingService.getTeamMeetings(teamId));
     }
 
-    /**
-     * Access control for viewing a team's meetings.
-     * <ul>
-     *   <li>EMPLOYEE → own team only</li>
-     *   <li>MANAGER  → managed team only</li>
-     *   <li>HR       → any team in the same company</li>
-     * </ul>
-     */
     private void enforceTeamMeetingAccess(User user, Long targetTeamId) {
         if (user.getRole() == Role.HR) {
-            // HR can view any team's meetings (company check would require loading the team;
-            // findByTeamWithDetails will simply return empty if the team doesn't exist)
             return;
         }
 

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import com.example.hybridflow.dto.PersonalTaskCreateRequestDTO;
 import com.example.hybridflow.dto.PersonalTaskResponseDTO;
 import com.example.hybridflow.dto.PersonalTaskStatusUpdateDTO;
+import com.example.hybridflow.dto.PersonalTaskUpdateRequestDTO;
 import com.example.hybridflow.security.CustomUserDetails;
 import com.example.hybridflow.service.PersonalTaskService;
 
@@ -83,5 +84,22 @@ public class PersonalTaskController {
 
         personalTaskService.deleteMyPersonalTask(id, userDetails.getUser());
         return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('MANAGER','EMPLOYEE')")
+    public ResponseEntity<PersonalTaskResponseDTO> updateMyPersonalTask(
+            @PathVariable Long id,
+            @Valid @RequestBody PersonalTaskUpdateRequestDTO dto,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        PersonalTaskResponseDTO response =
+                personalTaskService.updateMyPersonalTask(id, dto, userDetails.getUser());
+
+        return ResponseEntity.ok(response);
     }
 }

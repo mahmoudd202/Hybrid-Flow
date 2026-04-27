@@ -12,62 +12,79 @@ import java.util.List;
 @Repository
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
-    // Find all meetings a specific team is participating in
-    List<Meeting> findByParticipatingTeams_Id(Long teamId);
+  // Find all meetings a specific team is participating in
+  List<Meeting> findByParticipatingTeams_Id(Long teamId);
 
-    // Find meetings hosted by a user
-    List<Meeting> findByHostId(Long userId);
+  // Find meetings hosted by a user
+  List<Meeting> findByHostId(Long userId);
 
-    // Find all meetings happening in an office on a specific day
-    // I think this is a shitty method but again,, AI suggested and I don't think it is useful
-//    @Query("SELECT m FROM Meeting m WHERE m.office.id = :officeId AND m.startTime >= :start AND m.endTime <= :end")
-//    List<Meeting> findMeetingsInOffice(Long officeId, LocalDateTime start, LocalDateTime end);
+  // Find all meetings happening in an office on a specific day
+  // I think this is a shitty method but again,, AI suggested and I don't think it
+  // is useful
+  // @Query("SELECT m FROM Meeting m WHERE m.office.id = :officeId AND m.startTime
+  // >= :start AND m.endTime <= :end")
+  // List<Meeting> findMeetingsInOffice(Long officeId, LocalDateTime start,
+  // LocalDateTime end);
 
-    // This one query handles both the "Team View" and the "Individual View"
-    // while preventing N+1 and LazyInitializationExceptions.
-    @Query("SELECT m FROM Meeting m " +
-            "JOIN FETCH m.office " +
-            "JOIN FETCH m.host " +
-            "JOIN FETCH m.participatingTeams t " +
-            "WHERE t.id = :teamId")
-    List<Meeting> findByTeamWithDetails(Long id);
+  // This one query handles both the "Team View" and the "Individual View"
+  // while preventing N+1 and LazyInitializationExceptions.
+  @Query("SELECT m FROM Meeting m " +
+      "JOIN FETCH m.office " +
+      "JOIN FETCH m.host " +
+      "JOIN FETCH m.participatingTeams t " +
+      "WHERE t.id = :teamId")
+  List<Meeting> findByTeamWithDetails(Long id);
 
-    @Query("""
-        select distinct m from Meeting m
-        join fetch m.office o
-        join fetch m.host h
-        join fetch m.participatingTeams pt
-        where pt.id = :teamId
-          and m.startTime < :rangeEnd
-          and m.endTime > :rangeStart
-        order by m.startTime asc
-    """)
-    List<Meeting> findTeamMeetingsInRange(Long teamId, LocalDateTime rangeStart, LocalDateTime rangeEnd);
+  @Query("""
+          select distinct m from Meeting m
+          join fetch m.office o
+          join fetch m.host h
+          join fetch m.participatingTeams pt
+          where pt.id = :teamId
+            and m.startTime < :rangeEnd
+            and m.endTime > :rangeStart
+          order by m.startTime asc
+      """)
+  List<Meeting> findTeamMeetingsInRange(Long teamId, LocalDateTime rangeStart, LocalDateTime rangeEnd);
 
-    // HR view: all meetings across all teams in a company
-    @Query("""
-        select distinct m from Meeting m
-        join fetch m.office o
-        join fetch m.host h
-        join fetch m.participatingTeams pt
-        where pt.company.id = :companyId
-          and m.startTime < :rangeEnd
-          and m.endTime > :rangeStart
-        order by m.startTime asc
-    """)
-    List<Meeting> findCompanyMeetingsInRange(Long companyId, LocalDateTime rangeStart, LocalDateTime rangeEnd);
+  // HR view: all meetings across all teams in a company
+  @Query("""
+          select distinct m from Meeting m
+          join fetch m.office o
+          join fetch m.host h
+          join fetch m.participatingTeams pt
+          where pt.company.id = :companyId
+            and m.startTime < :rangeEnd
+            and m.endTime > :rangeStart
+          order by m.startTime asc
+      """)
+  List<Meeting> findCompanyMeetingsInRange(Long companyId, LocalDateTime rangeStart, LocalDateTime rangeEnd);
 
-    // HR office view: meetings happening at a specific office
-    @Query("""
-        select distinct m from Meeting m
-        join fetch m.office o
-        join fetch m.host h
-        join fetch m.participatingTeams pt
-        where o.id = :officeId
-          and m.startTime < :rangeEnd
-          and m.endTime > :rangeStart
-        order by m.startTime asc
-    """)
-    List<Meeting> findOfficeMeetingsInRange(Long officeId, LocalDateTime rangeStart, LocalDateTime rangeEnd);
+  // HR office view: meetings happening at a specific office
+  @Query("""
+          select distinct m from Meeting m
+          join fetch m.office o
+          join fetch m.host h
+          join fetch m.participatingTeams pt
+          where o.id = :officeId
+            and m.startTime < :rangeEnd
+            and m.endTime > :rangeStart
+          order by m.startTime asc
+      """)
+  List<Meeting> findOfficeMeetingsInRange(Long officeId, LocalDateTime rangeStart, LocalDateTime rangeEnd);
+
+  @Query("""
+          select distinct m from Meeting m
+          join fetch m.office o
+          join fetch m.host h
+          join fetch m.participatingTeams pt
+          where pt.id = :teamId
+            and m.id != :excludeId
+            and m.startTime < :rangeEnd
+            and m.endTime > :rangeStart
+          order by m.startTime asc
+      """)
+  List<Meeting> findTeamMeetingsInRangeExcluding(
+      Long teamId, LocalDateTime rangeStart, LocalDateTime rangeEnd, Long excludeId);
 
 }

@@ -81,7 +81,7 @@ public class AuthController {
                 .body(authService.registerInvited(request));
     }
 
-    @PostMapping("/activate")
+    @PostMapping("/activate") //csv inserted users
     public ResponseEntity<AuthActionResponse> activate(
             @RequestBody CsvActivationRequest request) {
 

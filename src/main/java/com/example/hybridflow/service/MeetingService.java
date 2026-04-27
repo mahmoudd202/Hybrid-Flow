@@ -27,7 +27,9 @@ public class MeetingService {
     private final UserRepository userRepository;
     private final ScheduleAvailabilityService scheduleAvailabilityService;
 
-    public MeetingService(MeetingRepository meetingRepository, TeamRepository teamRepository, OfficeRepository officeRepository, UserRepository userRepository, ScheduleAvailabilityService scheduleAvailabilityService) {
+    public MeetingService(MeetingRepository meetingRepository, TeamRepository teamRepository,
+            OfficeRepository officeRepository, UserRepository userRepository,
+            ScheduleAvailabilityService scheduleAvailabilityService) {
         this.meetingRepository = meetingRepository;
         this.teamRepository = teamRepository;
         this.officeRepository = officeRepository;
@@ -116,6 +118,84 @@ public class MeetingService {
         return toMeetingDto(saved);
     }
 
+    @Transactional
+    public void deleteMeeting(Long meetingId, User requester) {
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Meeting not found"));
+
+        if (!meeting.getHost().getId().equals(requester.getId())) {
+            throw new AccessDeniedException("You can only delete meetings you created");
+        }
+
+        meetingRepository.delete(meeting);
+    }
+
+    @Transactional
+    public MeetingDTO updateMeeting(Long meetingId, MeetingRequestDTO dto, User requester) {
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Meeting not found"));
+
+        if (!meeting.getHost().getId().equals(requester.getId())) {
+            throw new AccessDeniedException("You can only edit meetings you created");
+        }
+
+        // --- Validate time range ---
+        validateTimeRange(dto.getStartTime(), dto.getEndTime());
+
+        // --- Validate office ---
+        Office office = officeRepository.findById(dto.getOfficeId())
+                .orElseThrow(() -> new ResourceNotFoundException("Office not found"));
+
+        if (!office.getCompany().getId().equals(requester.getCompany().getId())) {
+            throw new AccessDeniedException("You can only book meetings in your company's offices");
+        }
+
+        // --- Validate participating teams ---
+        List<Team> teams = teamRepository.findAllById(dto.getParticipatingTeamIds());
+
+        if (teams.isEmpty()) {
+            throw new BusinessValidationException("No valid teams found for the given IDs");
+        }
+
+        for (Team team : teams) {
+            if (!team.getCompany().getId().equals(requester.getCompany().getId())) {
+                throw new AccessDeniedException("Cannot invite a team from another company: " + team.getName());
+            }
+        }
+
+        boolean hostTeamIncluded = teams.stream()
+                .anyMatch(t -> t.getId().equals(requester.getTeam().getId()));
+        if (!hostTeamIncluded) {
+            throw new BusinessValidationException("Your own team must be one of the participating teams");
+        }
+
+        // --- Schedule availability ---
+        LocalDate meetingDate = dto.getStartTime().toLocalDate();
+        Set<Long> seenUserIds = new HashSet<>();
+        List<User> affectedUsers = new ArrayList<>();
+        for (Team team : teams) {
+            for (User member : userRepository.findAllByTeamId(team.getId())) {
+                if (seenUserIds.add(member.getId())) {
+                    affectedUsers.add(member);
+                }
+            }
+        }
+        scheduleAvailabilityService.validateUsersAreSchedulableOnDate(affectedUsers, meetingDate);
+
+        // --- Conflict check (excluding this meeting itself) ---
+        checkForTeamSchedulingConflictsExcluding(teams, dto.getStartTime(), dto.getEndTime(), meetingId);
+
+        // --- Apply changes ---
+        meeting.setTitle(dto.getTitle());
+        meeting.setStartTime(dto.getStartTime());
+        meeting.setEndTime(dto.getEndTime());
+        meeting.setType(dto.getType());
+        meeting.setOffice(office);
+        meeting.setParticipatingTeams(teams);
+
+        return toMeetingDto(meetingRepository.save(meeting));
+    }
+
     /**
      * Fetch meetings for a specific team. Access control is enforced by the caller.
      */
@@ -125,7 +205,7 @@ public class MeetingService {
     }
 
     // ────────────────────────────────────────────────────────────────
-    //  VALIDATION HELPERS
+    // VALIDATION HELPERS
     // ────────────────────────────────────────────────────────────────
 
     private void validateTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
@@ -161,8 +241,30 @@ public class MeetingService {
         }
     }
 
+    private void checkForTeamSchedulingConflictsExcluding(
+            List<Team> teams, LocalDateTime startTime, LocalDateTime endTime, Long excludeMeetingId) {
+
+        List<String> conflicts = new ArrayList<>();
+
+        for (Team team : teams) {
+            List<Meeting> overlapping = meetingRepository.findTeamMeetingsInRangeExcluding(
+                    team.getId(), startTime, endTime, excludeMeetingId);
+
+            if (!overlapping.isEmpty()) {
+                String titles = overlapping.stream()
+                        .map(Meeting::getTitle)
+                        .collect(Collectors.joining(", "));
+                conflicts.add("Team \"" + team.getName() + "\" already has a meeting in this time slot: " + titles);
+            }
+        }
+
+        if (!conflicts.isEmpty()) {
+            throw new BusinessValidationException(String.join("; ", conflicts));
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────
-    //  DTO CONVERSION
+    // DTO CONVERSION
     // ────────────────────────────────────────────────────────────────
 
     private MeetingDTO toMeetingDto(Meeting m) {
@@ -178,7 +280,6 @@ public class MeetingService {
                 m.getType(),
                 m.getHost() != null ? m.getHost().getEmail() : null,
                 m.getOffice() != null ? m.getOffice().getName() : null,
-                teamNames
-        );
+                teamNames);
     }
 }

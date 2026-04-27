@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import com.example.hybridflow.dto.PersonalTaskCreateRequestDTO;
 import com.example.hybridflow.dto.PersonalTaskResponseDTO;
+import com.example.hybridflow.dto.PersonalTaskUpdateRequestDTO;
 import com.example.hybridflow.entity.PersonalTask;
 import com.example.hybridflow.entity.PersonalTaskStatus;
 import com.example.hybridflow.entity.User;
@@ -74,6 +75,21 @@ public class PersonalTaskService {
                 .orElseThrow(() -> new ResourceNotFoundException("Personal task not found"));
 
         personalTaskRepository.delete(task);
+    }
+
+    @Transactional
+    public PersonalTaskResponseDTO updateMyPersonalTask(Long taskId, PersonalTaskUpdateRequestDTO dto, User currentUser) {
+        validateAuthenticatedUser(currentUser);
+
+        PersonalTask task = personalTaskRepository.findByIdAndOwnerId(taskId, currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Personal task not found"));
+
+        task.setTitle(dto.getTitle().trim());
+        task.setDescription(dto.getDescription());
+        task.setDueDate(dto.getDueDate());
+
+        PersonalTask updatedTask = personalTaskRepository.save(task);
+        return toResponse(updatedTask);
     }
 
     private void validateAuthenticatedUser(User currentUser) {

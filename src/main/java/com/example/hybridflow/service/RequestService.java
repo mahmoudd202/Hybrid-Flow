@@ -68,6 +68,24 @@ public class RequestService {
                 .toList();
     }
 
+    @Transactional
+    public void deleteRequest(Long requestId, User currentUser) {
+        validateAuthenticatedUser(currentUser);
+
+        Request request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (!request.getRequester().getId().equals(currentUser.getId())) {
+            throw new AccessDeniedException("You can only delete your own requests");
+        }
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new BusinessValidationException("You can only delete pending requests. Please contact HR to cancel an already processed request.");
+        }
+
+        requestRepository.delete(request);
+    }
+
     public List<RequestResponseDTO> getPendingRequestsByCompany(User hrUser) {
         validateHrContext(hrUser);
 

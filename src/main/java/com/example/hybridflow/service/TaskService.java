@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import com.example.hybridflow.dto.TaskAssignmentStatusUpdateDTO;
 import com.example.hybridflow.dto.TaskCreateRequestDTO;
 import com.example.hybridflow.dto.TaskDetailsResponseDTO;
+import com.example.hybridflow.dto.TaskUpdateRequestDTO;
 import com.example.hybridflow.entity.*;
 import com.example.hybridflow.exception.BusinessValidationException;
 import com.example.hybridflow.exception.ResourceNotFoundException;
@@ -33,8 +34,7 @@ public class TaskService {
             TaskAssignmentRepository taskAssignmentRepository,
             UserRepository userRepository,
             ScheduleAvailabilityService scheduleAvailabilityService,
-            TaskMapper taskMapper
-    ) {
+            TaskMapper taskMapper) {
         this.taskRepository = taskRepository;
         this.taskAssignmentRepository = taskAssignmentRepository;
         this.userRepository = userRepository;
@@ -68,6 +68,60 @@ public class TaskService {
         }
 
         return taskMapper.toTaskDetailsResponse(savedTask, savedAssignments);
+    }
+
+    @Transactional
+    public void deleteTask(Long taskId, User manager) {
+        validateManagerContext(manager);
+
+        Task task = taskRepository.findWithDetailsById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+
+        if (!task.getCreatedBy().getId().equals(manager.getId())) {
+            throw new AccessDeniedException("You can only delete tasks you created");
+        }
+
+        // Delete assignments first to avoid FK constraint violations
+        List<TaskAssignment> assignments = taskAssignmentRepository.findAllByTaskId(taskId);
+        taskAssignmentRepository.deleteAll(assignments);
+
+        taskRepository.delete(task);
+    }
+
+    @Transactional
+    public TaskDetailsResponseDTO updateTask(Long taskId, TaskUpdateRequestDTO dto, User manager) {
+        validateManagerContext(manager);
+
+        Task task = taskRepository.findWithDetailsById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+
+        if (!task.getCreatedBy().getId().equals(manager.getId())) {
+            throw new AccessDeniedException("You can only edit tasks you created");
+        }
+
+        // Re-validate schedule availability for the new due date if it changed
+        if (!dto.getDueDate().equals(task.getDueDate())) {
+            List<TaskAssignment> assignments = taskAssignmentRepository.findAllByTaskId(taskId);
+            List<User> assignees = assignments.stream()
+                    .map(TaskAssignment::getAssignee)
+                    .toList();
+
+            if (task.getTargetType() == TaskTargetType.INDIVIDUAL) {
+                scheduleAvailabilityService.validateUserIsSchedulableOnDate(
+                        assignees.get(0), dto.getDueDate().toLocalDate());
+            } else {
+                scheduleAvailabilityService.validateUsersAreSchedulableOnDate(
+                        assignees, dto.getDueDate().toLocalDate());
+            }
+        }
+
+        task.setTitle(dto.getTitle().trim());
+        task.setDescription(dto.getDescription());
+        task.setDueDate(dto.getDueDate());
+
+        Task saved = taskRepository.save(task);
+        List<TaskAssignment> assignments = taskAssignmentRepository.findAllByTaskId(taskId);
+        return taskMapper.toTaskDetailsResponse(saved, assignments);
     }
 
     public List<Task> getManagerCreatedTasks(User manager) {
@@ -135,7 +189,8 @@ public class TaskService {
         }
     }
 
-    private List<TaskAssignment> createIndividualAssignment(TaskCreateRequestDTO dto, User manager, Team managedTeam, Task task) {
+    private List<TaskAssignment> createIndividualAssignment(TaskCreateRequestDTO dto, User manager, Team managedTeam,
+            Task task) {
         User assignee = userRepository.findById(dto.getAssigneeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Assignee not found"));
 
@@ -143,8 +198,7 @@ public class TaskService {
 
         scheduleAvailabilityService.validateUserIsSchedulableOnDate(
                 assignee,
-                dto.getDueDate().toLocalDate()
-        );
+                dto.getDueDate().toLocalDate());
 
         TaskAssignment assignment = new TaskAssignment();
         assignment.setTask(task);
@@ -178,8 +232,7 @@ public class TaskService {
 
         scheduleAvailabilityService.validateUsersAreSchedulableOnDate(
                 teamMembers,
-                task.getDueDate().toLocalDate()
-        );
+                task.getDueDate().toLocalDate());
 
         List<TaskAssignment> assignments = new ArrayList<>();
 
