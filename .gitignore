@@ -1,0 +1,50 @@
+# --- PROJECT SPECIFIC & SECURITY ---
+# Ignore your main config to protect MySQL & JWT secrets
+src/main/resources/application.properties
+# Template for others (optional to add here if you want to be extra safe)
+# !src/main/resources/application.properties.example
+
+# Gurobi / Optimization logs and solutions
+gurobi.log
+*.sol
+*.lp
+*.log
+
+# --- SPRING INITIALIZR BASE (Your Current Rules) ---
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+# --- EXTRA SYSTEM FILES ---
+.DS_Store
+Thumbs.db

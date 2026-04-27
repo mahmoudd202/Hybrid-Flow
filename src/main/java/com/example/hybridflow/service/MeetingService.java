@@ -1,0 +1,184 @@
+package com.example.hybridflow.service;
+
+import jakarta.transaction.Transactional;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+
+import com.example.hybridflow.dto.MeetingDTO;
+import com.example.hybridflow.dto.MeetingRequestDTO;
+import com.example.hybridflow.entity.*;
+import com.example.hybridflow.exception.BusinessValidationException;
+import com.example.hybridflow.exception.ResourceNotFoundException;
+import com.example.hybridflow.repository.MeetingRepository;
+import com.example.hybridflow.repository.OfficeRepository;
+import com.example.hybridflow.repository.TeamRepository;
+import com.example.hybridflow.repository.UserRepository;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+public class MeetingService {
+    private final MeetingRepository meetingRepository;
+    private final TeamRepository teamRepository;
+    private final OfficeRepository officeRepository;
+    private final UserRepository userRepository;
+    private final ScheduleAvailabilityService scheduleAvailabilityService;
+
+    public MeetingService(MeetingRepository meetingRepository, TeamRepository teamRepository, OfficeRepository officeRepository, UserRepository userRepository, ScheduleAvailabilityService scheduleAvailabilityService) {
+        this.meetingRepository = meetingRepository;
+        this.teamRepository = teamRepository;
+        this.officeRepository = officeRepository;
+        this.userRepository = userRepository;
+        this.scheduleAvailabilityService = scheduleAvailabilityService;
+    }
+
+    @Transactional
+    public MeetingDTO createMeeting(MeetingRequestDTO dto, User host) {
+        // --- Validate host context ---
+        if (host == null) {
+            throw new AccessDeniedException("Unauthenticated");
+        }
+        if (host.getCompany() == null) {
+            throw new AccessDeniedException("You are not attached to a company");
+        }
+        if (host.getTeam() == null) {
+            throw new AccessDeniedException("You are not attached to a team");
+        }
+
+        // --- Validate time range ---
+        validateTimeRange(dto.getStartTime(), dto.getEndTime());
+
+        // --- Validate office belongs to host's company ---
+        Office office = officeRepository.findById(dto.getOfficeId())
+                .orElseThrow(() -> new ResourceNotFoundException("Office not found"));
+
+        if (!office.getCompany().getId().equals(host.getCompany().getId())) {
+            throw new AccessDeniedException("You can only book meetings in your company's offices");
+        }
+
+        // --- Validate participating teams ---
+        List<Team> teams = teamRepository.findAllById(dto.getParticipatingTeamIds());
+
+        if (teams.isEmpty()) {
+            throw new BusinessValidationException("No valid teams found for the given IDs");
+        }
+
+        // Check all teams belong to the same company
+        for (Team team : teams) {
+            if (!team.getCompany().getId().equals(host.getCompany().getId())) {
+                throw new AccessDeniedException("Cannot invite a team from another company: " + team.getName());
+            }
+        }
+
+        // Host's team must be one of the participating teams
+        boolean hostTeamIncluded = teams.stream()
+                .anyMatch(t -> t.getId().equals(host.getTeam().getId()));
+        if (!hostTeamIncluded) {
+            throw new BusinessValidationException(
+                    "Your own team must be one of the participating teams");
+        }
+
+        // --- Collect affected users (deduplicated) ---
+        LocalDate meetingDate = dto.getStartTime().toLocalDate();
+        Set<Long> seenUserIds = new HashSet<>();
+        List<User> affectedUsers = new ArrayList<>();
+
+        for (Team team : teams) {
+            for (User member : userRepository.findAllByTeamId(team.getId())) {
+                if (seenUserIds.add(member.getId())) {
+                    affectedUsers.add(member);
+                }
+            }
+        }
+
+        // --- Validate schedule availability (blocks OFF and SICK_LEAVE) ---
+        scheduleAvailabilityService.validateUsersAreSchedulableOnDate(affectedUsers, meetingDate);
+
+        // --- Check for time overlap with existing meetings for participating teams ---
+        checkForTeamSchedulingConflicts(teams, dto.getStartTime(), dto.getEndTime());
+
+        // --- Save ---
+        Meeting meeting = new Meeting();
+        meeting.setTitle(dto.getTitle());
+        meeting.setStartTime(dto.getStartTime());
+        meeting.setEndTime(dto.getEndTime());
+        meeting.setType(dto.getType());
+        meeting.setHost(host);
+        meeting.setOffice(office);
+        meeting.setParticipatingTeams(teams);
+
+        Meeting saved = meetingRepository.save(meeting);
+
+        // Return a DTO, not the raw entity, to avoid LazyInitializationException
+        return toMeetingDto(saved);
+    }
+
+    /**
+     * Fetch meetings for a specific team. Access control is enforced by the caller.
+     */
+    public List<MeetingDTO> getTeamMeetings(Long teamId) {
+        List<Meeting> meetings = meetingRepository.findByTeamWithDetails(teamId);
+        return meetings.stream().map(this::toMeetingDto).collect(Collectors.toList());
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    //  VALIDATION HELPERS
+    // ────────────────────────────────────────────────────────────────
+
+    private void validateTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
+        if (startTime == null || endTime == null) {
+            throw new BusinessValidationException("startTime and endTime are required");
+        }
+        if (!endTime.isAfter(startTime)) {
+            throw new BusinessValidationException("endTime must be after startTime");
+        }
+    }
+
+    /**
+     * Checks that none of the participating teams already have a meeting
+     * that overlaps with the proposed time window.
+     */
+    private void checkForTeamSchedulingConflicts(List<Team> teams, LocalDateTime startTime, LocalDateTime endTime) {
+        List<String> conflicts = new ArrayList<>();
+
+        for (Team team : teams) {
+            List<Meeting> overlapping = meetingRepository.findTeamMeetingsInRange(
+                    team.getId(), startTime, endTime);
+
+            if (!overlapping.isEmpty()) {
+                String titles = overlapping.stream()
+                        .map(Meeting::getTitle)
+                        .collect(Collectors.joining(", "));
+                conflicts.add("Team \"" + team.getName() + "\" already has a meeting in this time slot: " + titles);
+            }
+        }
+
+        if (!conflicts.isEmpty()) {
+            throw new BusinessValidationException(String.join("; ", conflicts));
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    //  DTO CONVERSION
+    // ────────────────────────────────────────────────────────────────
+
+    private MeetingDTO toMeetingDto(Meeting m) {
+        List<String> teamNames = m.getParticipatingTeams() != null
+                ? m.getParticipatingTeams().stream().map(Team::getName).collect(Collectors.toList())
+                : List.of();
+
+        return new MeetingDTO(
+                m.getId(),
+                m.getTitle(),
+                m.getStartTime(),
+                m.getEndTime(),
+                m.getType(),
+                m.getHost() != null ? m.getHost().getEmail() : null,
+                m.getOffice() != null ? m.getOffice().getName() : null,
+                teamNames
+        );
+    }
+}

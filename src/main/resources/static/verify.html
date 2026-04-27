@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verify Account</title>
+</head>
+<body>
+
+<h2>Verify OTP</h2>
+
+<form id="verifyForm">
+    <input type="email" id="email" readonly /><br/>
+    <input type="text" id="otp" placeholder="Enter OTP" required /><br/>
+    <button type="submit">Verify</button>
+</form>
+
+<p id="verifyMsg"></p>
+
+<script>
+    const params = new URLSearchParams(window.location.search);
+    document.getElementById("email").value = params.get("email");
+
+    document.getElementById("verifyForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const response = await fetch("http://localhost:8080/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: document.getElementById("email").value,
+          otp: document.getElementById("otp").value
+        })
+      });
+
+      const text = await response.text();
+      document.getElementById("verifyMsg").innerText = text;
+
+      if (response.ok) {
+        setTimeout(() => {
+          window.location.href = "login.html";
+        }, 1500);
+      }
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Home</title>
+</head>
+<body>
+
+<h2>Welcome</h2>
+
+<p id="msg"></p>
+
+<button onclick="logout()">Logout</button>
+
+<script>
+    const token = localStorage.getItem("accessToken");
+
+    if (!token) {
+      window.location.href = "login.html";
+    } else {
+      document.getElementById("msg").innerText =
+        "Logged in successfully. Token stored.";
+    }
+
+    function logout() {
+      localStorage.removeItem("accessToken");
+      window.location.href = "login.html";
+    }
+</script>
+
+</body>
+</html>
