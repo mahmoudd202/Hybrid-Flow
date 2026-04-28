@@ -10,4 +10,6 @@ import java.util.List;
 public class TaskDetailsResponseDTO {
     private TaskResponseDTO task;
     private List<TaskAssignmentResponseDTO> assignments;
+    private List<String> excludedAssigneeEmails;
+
 }

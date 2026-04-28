@@ -16,6 +16,7 @@ import com.example.hybridflow.repository.TaskAssignmentRepository;
 import com.example.hybridflow.repository.TaskRepository;
 import com.example.hybridflow.repository.UserRepository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,14 +61,18 @@ public class TaskService {
 
         Task savedTask = taskRepository.save(task);
 
-        List<TaskAssignment> savedAssignments;
+        AssignmentCreationResult result;
+
         if (dto.getTargetType() == TaskTargetType.INDIVIDUAL) {
-            savedAssignments = createIndividualAssignment(dto, manager, managedTeam, savedTask);
+            result = createIndividualAssignment(dto, manager, managedTeam, savedTask);
         } else {
-            savedAssignments = createTeamAssignments(manager, managedTeam, savedTask);
+            result = createTeamAssignments(manager, managedTeam, savedTask);
         }
 
-        return taskMapper.toTaskDetailsResponse(savedTask, savedAssignments);
+        return taskMapper.toTaskDetailsResponse(
+                savedTask,
+                result.getSavedAssignments(),
+                result.getExcludedAssigneeEmails());
     }
 
     @Transactional
@@ -81,7 +86,6 @@ public class TaskService {
             throw new AccessDeniedException("You can only delete tasks you created");
         }
 
-        // Delete assignments first to avoid FK constraint violations
         List<TaskAssignment> assignments = taskAssignmentRepository.findAllByTaskId(taskId);
         taskAssignmentRepository.deleteAll(assignments);
 
@@ -99,19 +103,48 @@ public class TaskService {
             throw new AccessDeniedException("You can only edit tasks you created");
         }
 
-        // Re-validate schedule availability for the new due date if it changed
+        List<String> excludedAssignees = List.of();
+
+        /*
+         * If due date changes:
+         * - INDIVIDUAL task: still block if the assigned user is unavailable.
+         * - TEAM task: remove assignments for unavailable users.
+         */
         if (!dto.getDueDate().equals(task.getDueDate())) {
-            List<TaskAssignment> assignments = taskAssignmentRepository.findAllByTaskId(taskId);
-            List<User> assignees = assignments.stream()
+            List<TaskAssignment> currentAssignments = taskAssignmentRepository.findAllByTaskId(taskId);
+            List<User> assignees = currentAssignments.stream()
                     .map(TaskAssignment::getAssignee)
                     .toList();
 
+            LocalDate newDueDate = dto.getDueDate().toLocalDate();
+
             if (task.getTargetType() == TaskTargetType.INDIVIDUAL) {
-                scheduleAvailabilityService.validateUserIsSchedulableOnDate(
-                        assignees.get(0), dto.getDueDate().toLocalDate());
+                if (!assignees.isEmpty()) {
+                    List<String> unavailable = scheduleAvailabilityService.findUnavailableUserEmailsOnDate(assignees,
+                            newDueDate);
+
+                    if (!unavailable.isEmpty()) {
+                        throw new BusinessValidationException(
+                                "Cannot update task due date. The assigned employee is unavailable: "
+                                        + String.join("; ", unavailable));
+                    }
+                }
             } else {
-                scheduleAvailabilityService.validateUsersAreSchedulableOnDate(
-                        assignees, dto.getDueDate().toLocalDate());
+                List<String> unavailable = scheduleAvailabilityService.findUnavailableUserEmailsOnDate(assignees,
+                        newDueDate);
+
+                excludedAssignees = unavailable;
+
+                if (!unavailable.isEmpty()) {
+                    removeUnavailableAssignments(currentAssignments, unavailable);
+
+                    List<TaskAssignment> remainingAssignments = taskAssignmentRepository.findAllByTaskId(taskId);
+
+                    if (remainingAssignments.isEmpty()) {
+                        throw new BusinessValidationException(
+                                "Cannot update task due date. All assigned employees are unavailable on " + newDueDate);
+                    }
+                }
             }
         }
 
@@ -121,7 +154,8 @@ public class TaskService {
 
         Task saved = taskRepository.save(task);
         List<TaskAssignment> assignments = taskAssignmentRepository.findAllByTaskId(taskId);
-        return taskMapper.toTaskDetailsResponse(saved, assignments);
+
+        return taskMapper.toTaskDetailsResponse(saved, assignments, excludedAssignees);
     }
 
     public List<Task> getManagerCreatedTasks(User manager) {
@@ -133,6 +167,7 @@ public class TaskService {
         if (user == null) {
             throw new AccessDeniedException("Unauthenticated");
         }
+
         return taskAssignmentRepository.findAllForAssignee(user.getId());
     }
 
@@ -140,6 +175,7 @@ public class TaskService {
         validateManagerContext(manager);
 
         Task task = taskRepository.findDetailedById(taskId);
+
         if (task == null) {
             throw new ResourceNotFoundException("Task not found");
         }
@@ -180,6 +216,18 @@ public class TaskService {
     }
 
     private void validateCreateRequest(TaskCreateRequestDTO dto) {
+        if (dto.getTargetType() == null) {
+            throw new BusinessValidationException("targetType is required");
+        }
+
+        if (dto.getDueDate() == null) {
+            throw new BusinessValidationException("dueDate is required");
+        }
+
+        if (dto.getTitle() == null || dto.getTitle().trim().isEmpty()) {
+            throw new BusinessValidationException("Title is required");
+        }
+
         if (dto.getTargetType() == TaskTargetType.INDIVIDUAL && dto.getAssigneeId() == null) {
             throw new BusinessValidationException("INDIVIDUAL task requires assigneeId");
         }
@@ -189,16 +237,25 @@ public class TaskService {
         }
     }
 
-    private List<TaskAssignment> createIndividualAssignment(TaskCreateRequestDTO dto, User manager, Team managedTeam,
+    private AssignmentCreationResult createIndividualAssignment(
+            TaskCreateRequestDTO dto,
+            User manager,
+            Team managedTeam,
             Task task) {
         User assignee = userRepository.findById(dto.getAssigneeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Assignee not found"));
 
         validateAssigneeBelongsToManagedTeam(manager, managedTeam, assignee);
 
-        scheduleAvailabilityService.validateUserIsSchedulableOnDate(
-                assignee,
+        List<String> unavailable = scheduleAvailabilityService.findUnavailableUserEmailsOnDate(
+                List.of(assignee),
                 dto.getDueDate().toLocalDate());
+
+        if (!unavailable.isEmpty()) {
+            throw new BusinessValidationException(
+                    "Cannot assign task. The selected employee is unavailable: "
+                            + String.join("; ", unavailable));
+        }
 
         TaskAssignment assignment = new TaskAssignment();
         assignment.setTask(task);
@@ -207,10 +264,11 @@ public class TaskService {
         assignment.setAssignedAt(LocalDateTime.now());
 
         TaskAssignment saved = taskAssignmentRepository.save(assignment);
-        return List.of(saved);
+
+        return new AssignmentCreationResult(List.of(saved), List.of());
     }
 
-    private List<TaskAssignment> createTeamAssignments(User manager, Team managedTeam, Task task) {
+    private AssignmentCreationResult createTeamAssignments(User manager, Team managedTeam, Task task) {
         List<User> teamMembers = userRepository.findAllByTeamId(managedTeam.getId());
 
         if (teamMembers.isEmpty()) {
@@ -218,27 +276,28 @@ public class TaskService {
         }
 
         for (User member : teamMembers) {
-            // Optional rule:
-            // if (member.getId().equals(manager.getId())) continue;
-
-            if (member.getCompany() == null || !member.getCompany().getId().equals(manager.getCompany().getId())) {
+            if (member.getCompany() == null ||
+                    !member.getCompany().getId().equals(manager.getCompany().getId())) {
                 throw new AccessDeniedException("Invalid cross-company team member detected");
             }
 
-            if (member.getTeam() == null || !member.getTeam().getId().equals(managedTeam.getId())) {
+            if (member.getTeam() == null ||
+                    !member.getTeam().getId().equals(managedTeam.getId())) {
                 throw new AccessDeniedException("Invalid cross-team member detected");
             }
         }
 
-        scheduleAvailabilityService.validateUsersAreSchedulableOnDate(
-                teamMembers,
-                task.getDueDate().toLocalDate());
+        LocalDate dueDate = task.getDueDate().toLocalDate();
+
+        List<String> unavailableUsers = scheduleAvailabilityService.findUnavailableUserEmailsOnDate(teamMembers,
+                dueDate);
 
         List<TaskAssignment> assignments = new ArrayList<>();
 
         for (User member : teamMembers) {
-            // Optional rule:
-            // if (member.getId().equals(manager.getId())) continue;
+            if (isUserExcluded(member, unavailableUsers)) {
+                continue;
+            }
 
             TaskAssignment assignment = new TaskAssignment();
             assignment.setTask(task);
@@ -249,7 +308,46 @@ public class TaskService {
             assignments.add(assignment);
         }
 
-        return taskAssignmentRepository.saveAll(assignments);
+        if (assignments.isEmpty()) {
+            throw new BusinessValidationException(
+                    "Cannot create team task. All team members are unavailable on " + dueDate);
+        }
+
+        List<TaskAssignment> savedAssignments = taskAssignmentRepository.saveAll(assignments);
+
+        return new AssignmentCreationResult(savedAssignments, unavailableUsers);
+    }
+
+    private boolean isUserExcluded(User user, List<String> excludedMessages) {
+        if (user == null || user.getEmail() == null) {
+            return false;
+        }
+
+        for (String message : excludedMessages) {
+            if (message.startsWith(user.getEmail() + " ")) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void removeUnavailableAssignments(
+            List<TaskAssignment> currentAssignments,
+            List<String> unavailableMessages) {
+        List<TaskAssignment> toDelete = new ArrayList<>();
+
+        for (TaskAssignment assignment : currentAssignments) {
+            User assignee = assignment.getAssignee();
+
+            if (isUserExcluded(assignee, unavailableMessages)) {
+                toDelete.add(assignment);
+            }
+        }
+
+        if (!toDelete.isEmpty()) {
+            taskAssignmentRepository.deleteAll(toDelete);
+        }
     }
 
     private void validateManagerContext(User manager) {
@@ -280,6 +378,26 @@ public class TaskService {
         if (assignee.getTeam() == null ||
                 !assignee.getTeam().getId().equals(managedTeam.getId())) {
             throw new AccessDeniedException("Cannot assign a task outside your team");
+        }
+    }
+
+    private static class AssignmentCreationResult {
+        private final List<TaskAssignment> savedAssignments;
+        private final List<String> excludedAssigneeEmails;
+
+        private AssignmentCreationResult(
+                List<TaskAssignment> savedAssignments,
+                List<String> excludedAssigneeEmails) {
+            this.savedAssignments = savedAssignments;
+            this.excludedAssigneeEmails = excludedAssigneeEmails;
+        }
+
+        public List<TaskAssignment> getSavedAssignments() {
+            return savedAssignments;
+        }
+
+        public List<String> getExcludedAssigneeEmails() {
+            return excludedAssigneeEmails;
         }
     }
 }

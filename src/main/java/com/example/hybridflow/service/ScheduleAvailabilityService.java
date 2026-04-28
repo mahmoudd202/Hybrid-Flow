@@ -21,19 +21,27 @@ public class ScheduleAvailabilityService {
         this.scheduleEntryRepository = scheduleEntryRepository;
     }
 
+    /**
+     * Strict validation for flows where unavailable users should block the action.
+     * After removing SICK_LEAVE, only OFF means unavailable.
+     */
     public void validateUserIsSchedulableOnDate(User user, LocalDate date) {
         ScheduleEntry entry = scheduleEntryRepository.findPublishedEntryForUserOnDate(user.getId(), date)
                 .orElseThrow(() -> new BusinessValidationException(
                         "User " + user.getEmail() + " has no published schedule entry on " + date
                 ));
 
-        if (entry.getWorkMode() == WorkMode.OFF || entry.getWorkMode() == WorkMode.SICK_LEAVE) {
+        if (entry.getWorkMode() == WorkMode.OFF) {
             throw new BusinessValidationException(
-                    "User " + user.getEmail() + " is " + entry.getWorkMode().name() + " on " + date
+                    "User " + user.getEmail() + " is OFF on " + date
             );
         }
     }
 
+    /**
+     * Strict validation for flows where unavailable users should block the action.
+     * After removing SICK_LEAVE, only OFF means unavailable.
+     */
     public void validateUsersAreSchedulableOnDate(List<User> users, LocalDate date) {
         List<String> conflicts = new ArrayList<>();
 
@@ -46,13 +54,38 @@ public class ScheduleAvailabilityService {
                 continue;
             }
 
-            if (entry.getWorkMode() == WorkMode.OFF || entry.getWorkMode() == WorkMode.SICK_LEAVE) {
-                conflicts.add(user.getEmail() + " is " + entry.getWorkMode().name() + " on " + date);
+            if (entry.getWorkMode() == WorkMode.OFF) {
+                conflicts.add(user.getEmail() + " is OFF on " + date);
             }
         }
 
         if (!conflicts.isEmpty()) {
             throw new BusinessValidationException(String.join("; ", conflicts));
         }
+    }
+
+    /**
+     * Option 2 behavior:
+     * Does not throw.
+     * Returns users who should be excluded from meetings/team tasks.
+     */
+    public List<String> findUnavailableUserEmailsOnDate(List<User> users, LocalDate date) {
+        List<String> unavailableUsers = new ArrayList<>();
+
+        for (User user : users) {
+            ScheduleEntry entry = scheduleEntryRepository.findPublishedEntryForUserOnDate(user.getId(), date)
+                    .orElse(null);
+
+            if (entry == null) {
+                unavailableUsers.add(user.getEmail() + " has no published schedule entry on " + date);
+                continue;
+            }
+
+            if (entry.getWorkMode() == WorkMode.OFF) {
+                unavailableUsers.add(user.getEmail() + " is OFF on " + date);
+            }
+        }
+
+        return unavailableUsers;
     }
 }

@@ -19,9 +19,10 @@ import java.util.stream.Collectors;
  * <p>
  * Access rules:
  * <ul>
- *   <li><b>EMPLOYEE</b> – can view their own team's schedule (or personal only)</li>
- *   <li><b>MANAGER</b>  – can view their managed team's schedule</li>
- *   <li><b>HR</b>        – can view every team's schedule across the entire company</li>
+ * <li><b>EMPLOYEE</b> – can view their own team's schedule (or personal
+ * only)</li>
+ * <li><b>MANAGER</b> – can view their managed team's schedule</li>
+ * <li><b>HR</b> – can view every team's schedule across the entire company</li>
  * </ul>
  */
 @Service
@@ -39,8 +40,7 @@ public class ScheduleViewService {
             MeetingRepository meetingRepository,
             TeamRepository teamRepository,
             UserRepository userRepository,
-            OfficeRepository officeRepository
-    ) {
+            OfficeRepository officeRepository) {
         this.scheduleEntryRepository = scheduleEntryRepository;
         this.meetingRepository = meetingRepository;
         this.teamRepository = teamRepository;
@@ -48,14 +48,6 @@ public class ScheduleViewService {
         this.officeRepository = officeRepository;
     }
 
-    // ────────────────────────────────────────────────────────────────
-    //  PUBLIC API — called by the controller
-    // ────────────────────────────────────────────────────────────────
-
-    /**
-     * My personal schedule within a date range.
-     * Available to every authenticated user who belongs to a team.
-     */
     public ScheduleViewResponseDTO getMySchedule(LocalDate from, LocalDate to, User requester) {
         validateDateRange(from, to);
         User currentUser = getFreshUser(requester);
@@ -81,15 +73,8 @@ public class ScheduleViewService {
         return buildResponse(from, to, List.of(teamDto));
     }
 
-    /**
-     * View a specific employee's schedule.
-     * <ul>
-     *   <li>EMPLOYEE → can view self or same-team members only</li>
-     *   <li>MANAGER  → can view employees in their managed team only</li>
-     *   <li>HR       → can view any employee in the same company</li>
-     * </ul>
-     */
-    public ScheduleViewResponseDTO getEmployeeSchedule(Long targetEmployeeId, LocalDate from, LocalDate to, User requester) {
+    public ScheduleViewResponseDTO getEmployeeSchedule(Long targetEmployeeId, LocalDate from, LocalDate to,
+            User requester) {
         validateDateRange(from, to);
         User currentUser = getFreshUser(requester);
         User targetEmployee = userRepository.findById(targetEmployeeId)
@@ -119,14 +104,6 @@ public class ScheduleViewService {
         return buildResponse(from, to, List.of(teamDto));
     }
 
-    /**
-     * Team schedule view.
-     * <ul>
-     *   <li>EMPLOYEE → can only view their OWN team</li>
-     *   <li>MANAGER  → can only view their managed team (verified via team.manager)</li>
-     *   <li>HR       → can view any team in the company</li>
-     * </ul>
-     */
     public ScheduleViewResponseDTO getTeamSchedule(Long teamId, LocalDate from, LocalDate to, User requester) {
         validateDateRange(from, to);
         User currentUser = getFreshUser(requester);
@@ -140,10 +117,6 @@ public class ScheduleViewService {
         return buildResponse(from, to, List.of(teamDto));
     }
 
-    /**
-     * Company-wide schedule.
-     * Only HR is allowed to call this endpoint.
-     */
     public ScheduleViewResponseDTO getCompanySchedule(LocalDate from, LocalDate to, User requester) {
         validateDateRange(from, to);
         User currentUser = getFreshUser(requester);
@@ -195,10 +168,6 @@ public class ScheduleViewService {
         return buildResponse(from, to, teamDtos);
     }
 
-    /**
-     * Office-scoped schedule view.
-     * Only HR is allowed — shows all teams assigned to the given office.
-     */
     public ScheduleViewResponseDTO getOfficeSchedule(Long officeId, LocalDate from, LocalDate to, User requester) {
         validateDateRange(from, to);
         User currentUser = getFreshUser(requester);
@@ -258,10 +227,6 @@ public class ScheduleViewService {
         return buildResponse(from, to, teamDtos);
     }
 
-    // ────────────────────────────────────────────────────────────────
-    //  INTERNAL BUILDERS
-    // ────────────────────────────────────────────────────────────────
-
     private TeamScheduleDTO buildTeamSchedule(Team team, LocalDate from, LocalDate to) {
         List<ScheduleEntry> entries = scheduleEntryRepository.findPublishedEntriesForTeam(
                 team.getId(), from, to);
@@ -276,13 +241,13 @@ public class ScheduleViewService {
 
     private TeamScheduleDTO buildTeamScheduleFromData(
             Team team, LocalDate from, LocalDate to,
-            List<ScheduleEntry> entries, List<Meeting> meetings
-    ) {
+            List<ScheduleEntry> entries, List<Meeting> meetings) {
         // Group entries by user
         Map<Long, List<ScheduleEntry>> entriesByUser = entries.stream()
                 .collect(Collectors.groupingBy(se -> se.getUser().getId()));
 
-        // Build user rows — also include team members with no entries (so the grid shows them)
+        // Build user rows — also include team members with no entries (so the grid
+        // shows them)
         List<User> teamMembers = userRepository.findAllByTeamId(team.getId());
         List<UserScheduleDTO> memberDtos = new ArrayList<>();
         for (User member : teamMembers) {
@@ -323,13 +288,15 @@ public class ScheduleViewService {
                 user.getEmail(),
                 username,
                 user.getRole().name(),
-                entryDtos
-        );
+                entryDtos);
     }
 
     private MeetingDTO toMeetingDto(Meeting m) {
         List<String> teamNames = m.getParticipatingTeams() != null
-                ? m.getParticipatingTeams().stream().map(Team::getName).collect(Collectors.toList())
+                ? m.getParticipatingTeams()
+                        .stream()
+                        .map(Team::getName)
+                        .collect(Collectors.toList())
                 : List.of();
 
         return new MeetingDTO(
@@ -340,13 +307,9 @@ public class ScheduleViewService {
                 m.getType(),
                 m.getHost() != null ? m.getHost().getEmail() : null,
                 m.getOffice() != null ? m.getOffice().getName() : null,
-                teamNames
-        );
+                teamNames,
+                List.of());
     }
-
-    // ────────────────────────────────────────────────────────────────
-    //  VALIDATION & ACCESS CONTROL
-    // ────────────────────────────────────────────────────────────────
 
     private void validateDateRange(LocalDate from, LocalDate to) {
         if (from == null || to == null) {
@@ -357,10 +320,6 @@ public class ScheduleViewService {
         }
     }
 
-    /**
-     * Re-fetches the user from DB to ensure fresh team/company/role data,
-     * guarding against stale JWT-embedded entities.
-     */
     private User getFreshUser(User requester) {
         if (requester == null || requester.getId() == null) {
             throw new AccessDeniedException("Unauthenticated");
@@ -369,14 +328,6 @@ public class ScheduleViewService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
-    /**
-     * Access control for viewing a specific employee's schedule.
-     * <ul>
-     *   <li>HR → same company only</li>
-     *   <li>MANAGER → must actually own the team, target must be in that team</li>
-     *   <li>EMPLOYEE → self or same-team only</li>
-     * </ul>
-     */
     private void enforceEmployeeAccess(User requester, User targetEmployee) {
         Role role = requester.getRole();
 
@@ -413,14 +364,6 @@ public class ScheduleViewService {
         throw new AccessDeniedException("Role not allowed");
     }
 
-    /**
-     * Access control for viewing a team's schedule.
-     * <ul>
-     *   <li>HR → same company only</li>
-     *   <li>MANAGER → must actually own the team (team.manager.id == requester.id)</li>
-     *   <li>EMPLOYEE → own team only</li>
-     * </ul>
-     */
     private void enforceTeamAccess(User user, Team targetTeam) {
         Role role = user.getRole();
 
@@ -453,10 +396,6 @@ public class ScheduleViewService {
         throw new AccessDeniedException("Role not allowed");
     }
 
-    /**
-     * Verifies that a MANAGER user is actually the designated manager of their team.
-     * Prevents someone with MANAGER role from accessing teams they don't manage.
-     */
     private void validateManagerOwnsTeam(User manager) {
         if (manager.getTeam() == null) {
             throw new AccessDeniedException("Manager is not attached to a team");
@@ -479,14 +418,13 @@ public class ScheduleViewService {
 
     private List<MeetingDTO> fetchTeamMeetings(Long teamId, LocalDate from, LocalDate to) {
         LocalDateTime rangeStart = from.atStartOfDay();
-        LocalDateTime rangeEnd   = to.plusDays(1).atStartOfDay();
+        LocalDateTime rangeEnd = to.plusDays(1).atStartOfDay();
         List<Meeting> meetings = meetingRepository.findTeamMeetingsInRange(teamId, rangeStart, rangeEnd);
         return meetings.stream().map(this::toMeetingDto).collect(Collectors.toList());
     }
 
     private ScheduleViewResponseDTO buildResponse(
-            LocalDate from, LocalDate to, List<TeamScheduleDTO> teams
-    ) {
+            LocalDate from, LocalDate to, List<TeamScheduleDTO> teams) {
         return new ScheduleViewResponseDTO(from, to, teams);
     }
 }

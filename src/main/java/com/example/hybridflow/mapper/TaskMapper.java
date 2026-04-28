@@ -14,7 +14,9 @@ import java.util.List;
 public class TaskMapper {
 
     public TaskResponseDTO toTaskResponse(Task task) {
-        if (task == null) return null;
+        if (task == null) {
+            return null;
+        }
 
         return TaskResponseDTO.builder()
                 .id(task.getId())
@@ -31,7 +33,9 @@ public class TaskMapper {
     }
 
     public TaskAssignmentResponseDTO toAssignmentResponse(TaskAssignment assignment) {
-        if (assignment == null) return null;
+        if (assignment == null) {
+            return null;
+        }
 
         Task task = assignment.getTask();
 
@@ -71,9 +75,20 @@ public class TaskMapper {
     }
 
     public TaskDetailsResponseDTO toTaskDetailsResponse(Task task, List<TaskAssignment> assignments) {
+        return toTaskDetailsResponse(task, assignments, List.of());
+    }
+
+    public TaskDetailsResponseDTO toTaskDetailsResponse(
+            Task task,
+            List<TaskAssignment> assignments,
+            List<String> excludedAssigneeEmails
+    ) {
         return TaskDetailsResponseDTO.builder()
                 .task(toTaskResponse(task))
                 .assignments(toAssignmentResponseList(assignments))
+                .excludedAssigneeEmails(
+                        excludedAssigneeEmails != null ? excludedAssigneeEmails : List.of()
+                )
                 .build();
     }
 }

@@ -21,7 +21,7 @@ public class Meeting {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "host_id", nullable = false)
-    private User host;  //Many Meetings to One Host
+    private User host; // Many Meetings to One Host
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "office_id", nullable = false)
@@ -30,12 +30,9 @@ public class Meeting {
     @Enumerated(EnumType.STRING)
     private MeetingType type;
 
-    // Restricted to teams within the same office but not enforced by code,, can be handled by the service layer
+    // Restricted to teams within the same office but not enforced by code,, can be
+    // handled by the service layer
     @ManyToMany
-    @JoinTable(
-            name = "meeting_teams",
-            joinColumns = @JoinColumn(name = "meeting_id"),
-            inverseJoinColumns = @JoinColumn(name = "team_id")
-    )
+    @JoinTable(name = "meeting_teams", joinColumns = @JoinColumn(name = "meeting_id"), inverseJoinColumns = @JoinColumn(name = "team_id"))
     private List<Team> participatingTeams = new ArrayList<>();
 }

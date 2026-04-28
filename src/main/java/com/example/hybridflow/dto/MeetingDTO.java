@@ -9,9 +9,7 @@ import java.util.List;
 
 import com.example.hybridflow.entity.MeetingType;
 
-/**
- * Flattened meeting that the frontend shows on the schedule calendar.
- */
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -24,4 +22,6 @@ public class MeetingDTO {
     private String hostEmail;
     private String officeName;
     private List<String> participatingTeamNames;
+    private List<String> excludedParticipantEmails;
+
 }
