@@ -20,7 +20,7 @@ public class Team {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "office_id")
-    private Office office;  //should that be removed??????? check Schedule class
+    private Office office;  
 
     @Column(nullable = false, length = 150)
     private String name;

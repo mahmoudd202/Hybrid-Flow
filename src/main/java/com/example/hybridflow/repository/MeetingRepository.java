@@ -8,6 +8,8 @@ import com.example.hybridflow.entity.Meeting;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
+import com.example.hybridflow.entity.MeetingType;
 
 @Repository
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
@@ -87,4 +89,38 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
   List<Meeting> findTeamMeetingsInRangeExcluding(
       Long teamId, LocalDateTime rangeStart, LocalDateTime rangeEnd, Long excludeId);
 
+  @Query("""
+        select distinct m from Meeting m
+        join fetch m.office o
+        join fetch m.host h
+        join fetch m.participatingTeams pt
+        join User u on u.team = pt
+        where u.id = :userId
+          and m.startTime < :rangeEnd
+          and m.endTime > :rangeStart
+        order by m.startTime asc
+    """)
+List<Meeting> findUserMeetingsInRange(
+        Long userId,
+        LocalDateTime rangeStart,
+        LocalDateTime rangeEnd
+);
+
+@Query("""
+        select distinct m from Meeting m
+        join fetch m.office o
+        join fetch m.host h
+        join fetch m.participatingTeams pt
+        join User u on u.team = pt
+        where u.id = :userId
+          and m.type = com.example.hybridflow.entity.MeetingType.OFFICE
+          and m.startTime < :rangeEnd
+          and m.endTime > :rangeStart
+        order by m.startTime asc
+    """)
+List<Meeting> findUserOfficeMeetingsInRange(
+        Long userId,
+        LocalDateTime rangeStart,
+        LocalDateTime rangeEnd
+);
 }

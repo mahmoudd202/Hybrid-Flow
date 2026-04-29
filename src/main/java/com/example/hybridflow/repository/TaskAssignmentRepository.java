@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import com.example.hybridflow.entity.TaskAssignment;
 import com.example.hybridflow.entity.TaskAssignmentStatus;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -56,4 +57,18 @@ public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, 
     """)
     List<TaskAssignment> findPendingAssignmentsForUser(Long userId, List<TaskAssignmentStatus> statuses);
 
+    @Query("""
+        select ta from TaskAssignment ta
+        join fetch ta.task t
+        join fetch ta.assignee a
+        join fetch t.createdBy cb
+        where a.id = :userId
+          and t.dueDate between :startDate and :endDate
+          and ta.status not in (
+            com.example.hybridflow.entity.TaskAssignmentStatus.DONE,
+            com.example.hybridflow.entity.TaskAssignmentStatus.CANCELLED
+          )
+        order by t.dueDate asc
+    """)
+    List<TaskAssignment> findActiveAssignmentsForUserInDateRange(Long userId, LocalDateTime startDate, LocalDateTime endDate);
 }

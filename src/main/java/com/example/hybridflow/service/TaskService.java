@@ -188,6 +188,32 @@ public class TaskService {
     }
 
     @Transactional
+    public void handlePtoRequest(User requester, LocalDate startDate, LocalDate endDate) {
+        // Find all active tasks assigned to the requester during the PTO period
+        List<TaskAssignment> conflictingAssignments = taskAssignmentRepository.findActiveAssignmentsForUserInDateRange(
+                requester.getId(),
+                startDate.atStartOfDay(),
+                endDate.plusDays(1).atStartOfDay()
+        );
+
+        /*
+         * Automatically handle PTO conflicts for tasks:
+         * 1. For INDIVIDUAL tasks: The assignment is CANCELLED.
+         *    This informs the manager that the task needs a new assignee or a new due date.
+         * 2. For TEAM tasks: The specific user's assignment is removed.
+         *    The task remains active for other team members.
+         */
+        for (TaskAssignment assignment : conflictingAssignments) {
+            if (assignment.getTask().getTargetType() == TaskTargetType.INDIVIDUAL) {
+                assignment.setStatus(TaskAssignmentStatus.CANCELLED);
+                taskAssignmentRepository.save(assignment);
+            } else {
+                taskAssignmentRepository.delete(assignment);
+            }
+        }
+    }
+
+    @Transactional
     public TaskAssignment updateMyAssignmentStatus(Long assignmentId, TaskAssignmentStatus newStatus, User user) {
         if (user == null) {
             throw new AccessDeniedException("Unauthenticated");

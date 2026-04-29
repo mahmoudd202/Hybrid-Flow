@@ -20,7 +20,6 @@ public class Schedule {
     @JoinColumn(name = "team_id", nullable = false)
     private Team team;
     // It means : many schedules to one team
-    // a questionable scenario: like lets say if the team is chosen to be in another office ,, think of it
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "office_id", nullable = false)
@@ -37,7 +36,4 @@ public class Schedule {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
-
-//    @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
-//    private List<ScheduleEntry > dailyAssignments = new ArrayList<>();
 }

@@ -213,6 +213,56 @@ public class MeetingService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional
+    public void handlePtoRequest(User requester, LocalDate startDate, LocalDate endDate) {
+        // Find all meetings where the requester is a participant during the PTO period
+        List<Meeting> conflictingMeetings = meetingRepository.findUserMeetingsInRange(
+                requester.getId(),
+                startDate.atStartOfDay(),
+                endDate.plusDays(1).atStartOfDay()
+        );
+
+        for (Meeting meeting : conflictingMeetings) {
+            /*
+             * Automatically handle PTO conflicts:
+             * 1. If the requester is the host, the meeting is cancelled (deleted).
+             * 2. If the requester is a participant (via team), they are effectively "declined".
+             *    In this system, meetings are team-based, so we don't remove the user from the team,
+             *    but the ScheduleViewService will already show them as OFF, which is the "user-friendly" way
+             *    to show they won't attend.
+             */
+            if (meeting.getHost().getId().equals(requester.getId())) {
+                meetingRepository.delete(meeting);
+            }
+            // For team participants, the ScheduleView already handles the "visual decline" by showing the user as OFF.
+        }
+    }
+
+        @Transactional
+    public void handleWfhRequest(User requester, LocalDate startDate, LocalDate endDate) {
+        // Find all OFFICE meetings where the requester is a participant during the WFH period
+        List<Meeting> conflictingMeetings = meetingRepository.findUserOfficeMeetingsInRange(
+                requester.getId(),
+                startDate.atStartOfDay(),
+                endDate.plusDays(1).atStartOfDay()
+        );
+
+        for (Meeting meeting : conflictingMeetings) {
+            /*
+             * Automatically handle WFH conflicts for OFFICE meetings:
+             * 1. If the requester is the HOST: The meeting type is automatically changed to ONLINE.
+             *    This is logical because the host won't be in the office to conduct it.
+             * 2. If the requester is a PARTICIPANT: We keep the meeting as is.
+             *    The ScheduleViewService will show the user as ONLINE/WFH, which informs the host
+             *    that this specific participant will be joining remotely.
+             */
+            if (meeting.getHost().getId().equals(requester.getId())) {
+                meeting.setType(MeetingType.ONLINE);
+                meetingRepository.save(meeting);
+            }
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────
     // VALIDATION HELPERS
     // ────────────────────────────────────────────────────────────────
