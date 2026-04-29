@@ -205,12 +205,53 @@ public class MeetingService {
      * Fetch meetings for a specific team.
      * Access control is enforced by the caller.
      */
-    public List<MeetingDTO> getTeamMeetings(Long teamId) {
+    public List<MeetingDTO> getTeamMeetingsForUser(Long teamId, User requester) {
+        enforceTeamMeetingAccess(requester, teamId);
+        return getTeamMeetings(teamId);
+    }
+
+    /**
+     * Fetch meetings for a specific team.
+     * Access control is enforced by the caller.
+     */
+    private List<MeetingDTO> getTeamMeetings(Long teamId) {
         List<Meeting> meetings = meetingRepository.findByTeamWithDetails(teamId);
 
         return meetings.stream()
                 .map(this::toMeetingDto)
                 .collect(Collectors.toList());
+    }
+
+    private void enforceTeamMeetingAccess(User user, Long targetTeamId) {
+        if (user == null) {
+            throw new AccessDeniedException("Unauthenticated");
+        }
+
+        Team targetTeam = teamRepository.findById(targetTeamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team not found"));
+
+        if (user.getCompany() == null) {
+            throw new AccessDeniedException("You are not attached to a company");
+        }
+
+        if (targetTeam.getCompany() == null) {
+            throw new AccessDeniedException("Target team is not attached to a company");
+        }
+
+        if (user.getRole() == Role.HR) {
+            if (!targetTeam.getCompany().getId().equals(user.getCompany().getId())) {
+                throw new AccessDeniedException("You cannot view meetings for another company");
+            }
+            return;
+        }
+
+        if (user.getTeam() == null) {
+            throw new AccessDeniedException("You are not assigned to any team");
+        }
+
+        if (!user.getTeam().getId().equals(targetTeamId)) {
+            throw new AccessDeniedException("You can only view meetings for your own team");
+        }
     }
 
     @Transactional
@@ -219,42 +260,47 @@ public class MeetingService {
         List<Meeting> conflictingMeetings = meetingRepository.findUserMeetingsInRange(
                 requester.getId(),
                 startDate.atStartOfDay(),
-                endDate.plusDays(1).atStartOfDay()
-        );
+                endDate.plusDays(1).atStartOfDay());
 
         for (Meeting meeting : conflictingMeetings) {
             /*
              * Automatically handle PTO conflicts:
              * 1. If the requester is the host, the meeting is cancelled (deleted).
-             * 2. If the requester is a participant (via team), they are effectively "declined".
-             *    In this system, meetings are team-based, so we don't remove the user from the team,
-             *    but the ScheduleViewService will already show them as OFF, which is the "user-friendly" way
-             *    to show they won't attend.
+             * 2. If the requester is a participant (via team), they are effectively
+             * "declined".
+             * In this system, meetings are team-based, so we don't remove the user from the
+             * team,
+             * but the ScheduleViewService will already show them as OFF, which is the
+             * "user-friendly" way
+             * to show they won't attend.
              */
             if (meeting.getHost().getId().equals(requester.getId())) {
                 meetingRepository.delete(meeting);
             }
-            // For team participants, the ScheduleView already handles the "visual decline" by showing the user as OFF.
+            // For team participants, the ScheduleView already handles the "visual decline"
+            // by showing the user as OFF.
         }
     }
 
-        @Transactional
+    @Transactional
     public void handleWfhRequest(User requester, LocalDate startDate, LocalDate endDate) {
-        // Find all OFFICE meetings where the requester is a participant during the WFH period
+        // Find all OFFICE meetings where the requester is a participant during the WFH
+        // period
         List<Meeting> conflictingMeetings = meetingRepository.findUserOfficeMeetingsInRange(
                 requester.getId(),
                 startDate.atStartOfDay(),
-                endDate.plusDays(1).atStartOfDay()
-        );
+                endDate.plusDays(1).atStartOfDay());
 
         for (Meeting meeting : conflictingMeetings) {
             /*
              * Automatically handle WFH conflicts for OFFICE meetings:
-             * 1. If the requester is the HOST: The meeting type is automatically changed to ONLINE.
-             *    This is logical because the host won't be in the office to conduct it.
+             * 1. If the requester is the HOST: The meeting type is automatically changed to
+             * ONLINE.
+             * This is logical because the host won't be in the office to conduct it.
              * 2. If the requester is a PARTICIPANT: We keep the meeting as is.
-             *    The ScheduleViewService will show the user as ONLINE/WFH, which informs the host
-             *    that this specific participant will be joining remotely.
+             * The ScheduleViewService will show the user as ONLINE/WFH, which informs the
+             * host
+             * that this specific participant will be joining remotely.
              */
             if (meeting.getHost().getId().equals(requester.getId())) {
                 meeting.setType(MeetingType.ONLINE);

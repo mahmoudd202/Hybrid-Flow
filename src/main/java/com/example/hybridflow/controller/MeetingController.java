@@ -2,14 +2,12 @@ package com.example.hybridflow.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import com.example.hybridflow.dto.MeetingDTO;
 import com.example.hybridflow.dto.MeetingRequestDTO;
-import com.example.hybridflow.entity.Role;
 import com.example.hybridflow.entity.User;
 import com.example.hybridflow.security.CustomUserDetails;
 import com.example.hybridflow.service.MeetingService;
@@ -61,7 +59,8 @@ public class MeetingController {
         if (userDetails == null)
             return ResponseEntity.status(401).build();
 
-        return ResponseEntity.ok(meetingService.updateMeeting(meetingId, dto, userDetails.getUser()));
+        return ResponseEntity.ok(
+                meetingService.updateMeeting(meetingId, dto, userDetails.getUser()));
     }
 
     @GetMapping("/my-schedule")
@@ -79,7 +78,9 @@ public class MeetingController {
         }
 
         return ResponseEntity.ok(
-                meetingService.getTeamMeetings(currentUser.getTeam().getId()));
+                meetingService.getTeamMeetingsForUser(
+                        currentUser.getTeam().getId(),
+                        currentUser));
     }
 
     @GetMapping("/team/{teamId}")
@@ -92,23 +93,8 @@ public class MeetingController {
             return ResponseEntity.status(401).build();
 
         User currentUser = userDetails.getUser();
-        enforceTeamMeetingAccess(currentUser, teamId);
 
         return ResponseEntity.ok(
-                meetingService.getTeamMeetings(teamId));
-    }
-
-    private void enforceTeamMeetingAccess(User user, Long targetTeamId) {
-        if (user.getRole() == Role.HR) {
-            return;
-        }
-
-        if (user.getTeam() == null) {
-            throw new AccessDeniedException("You are not assigned to any team");
-        }
-
-        if (!user.getTeam().getId().equals(targetTeamId)) {
-            throw new AccessDeniedException("You can only view meetings for your own team");
-        }
+                meetingService.getTeamMeetingsForUser(teamId, currentUser));
     }
 }
