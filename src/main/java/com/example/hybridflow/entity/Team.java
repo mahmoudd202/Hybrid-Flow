@@ -29,15 +29,6 @@ public class Team {
     @JoinColumn(name = "manager_id")
     private User manager;  // Team table owns the manager FK
 
-//    @OneToMany(mappedBy = "team")
-//    private List<User> employees;
-
-//    @OneToMany(mappedBy = "team", cascade = CascadeType.ALL)
-//    private List<Schedule> schedules = new ArrayList<>();
-
-//    @ManyToMany(mappedBy = "participatingTeams")
-//    private List<Meeting> meetings = new ArrayList<>();
-
 }
 
 

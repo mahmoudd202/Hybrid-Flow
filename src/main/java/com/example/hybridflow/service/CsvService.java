@@ -195,6 +195,19 @@ public class CsvService {
                 newUser.setProvider(AuthProvider.LOCAL);
 
                 userRepository.save(newUser);
+
+                // If the user is a MANAGER, handle team assignment strictly
+                if (role == Role.MANAGER) {
+                    if (team.getManager() == null) {
+                        team.setManager(newUser);
+                        teamRepository.save(team);
+                    } else if (!team.getManager().getId().equals(newUser.getId())) {
+                        // If team already has a DIFFERENT manager, we don't overwrite.
+                        // We mark the row as valid (user created) but add a warning/error about the team manager
+                        rowDto.setErrorMessage("User created, but Team '" + teamName + "' already has a manager. Assignment skipped.");
+                    }
+                }
+
                 rowDto.setSaved(true);
 
             } catch (Exception e) {

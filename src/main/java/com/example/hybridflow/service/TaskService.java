@@ -381,6 +381,10 @@ public class TaskService {
             throw new AccessDeniedException("Unauthenticated");
         }
 
+        if (manager.getRole() != Role.MANAGER) {
+            throw new AccessDeniedException("You do not have the MANAGER role");
+        }
+
         if (manager.getCompany() == null) {
             throw new AccessDeniedException("Manager is not attached to a company");
         }
@@ -389,9 +393,10 @@ public class TaskService {
             throw new AccessDeniedException("Manager is not attached to a team");
         }
 
+        // Check if this user is the designated manager for their team
         if (manager.getTeam().getManager() == null ||
                 !manager.getTeam().getManager().getId().equals(manager.getId())) {
-            throw new AccessDeniedException("You are not the actual manager of this team");
+            throw new AccessDeniedException("You are not the designated manager of this team");
         }
     }
 

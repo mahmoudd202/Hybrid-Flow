@@ -40,6 +40,11 @@ public class InvitationService {
             throw new BusinessValidationException("An active invitation has already been sent to this email.");
         }
 
+        // Strict Manager Check: A team can only have one manager
+        if (role == Role.MANAGER && team != null && team.getManager() != null) {
+            throw new BusinessValidationException("Team '" + team.getName() + "' already has a designated manager.");
+        }
+
         String token = otpService.generateOtp();
 
         Invitation invitation = new Invitation();
