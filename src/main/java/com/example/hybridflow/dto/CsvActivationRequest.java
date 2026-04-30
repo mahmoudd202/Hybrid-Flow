@@ -8,7 +8,8 @@ import java.time.LocalDate;
 public class CsvActivationRequest {
     private String email;
     private String password;
-    private String username;
+    private String firstName;
+    private String lastName;
     private LocalDate dateOfBirth;
     private String nationality;
 }

@@ -56,24 +56,24 @@ public class AuthService {
 
     @Transactional
     public AuthActionResponse logout(String token) {
- 
+
         if (!jwtService.isTokenValid(token)) {
             return AuthActionResponse.builder()
                     .message("Logged out successfully.")
                     .build();
         }
- 
+
         if (invalidatedTokenRepository.existsByToken(token)) {
             return AuthActionResponse.builder()
                     .message("Logged out successfully.")
                     .build();
         }
- 
+
         InvalidatedToken invalidated = new InvalidatedToken();
         invalidated.setToken(token);
         invalidated.setExpiresAt(jwtService.extractExpiry(token));
         invalidatedTokenRepository.save(invalidated);
- 
+
         return AuthActionResponse.builder()
                 .message("Logged out successfully.")
                 .build();
@@ -84,9 +84,6 @@ public class AuthService {
 
         Invitation invitation = invitationService.validateToken(request.getToken());
 
-        if (profileRepository.findByUsername(request.getUsername()).isPresent()) {
-            throw new BusinessValidationException("Username is already taken.");
-        }
         if (userRepository.findByEmail(invitation.getEmail()).isPresent()) {
             throw new BusinessValidationException("A user with this email is already registered.");
         }
@@ -105,7 +102,8 @@ public class AuthService {
         // Create UserProfile.
         UserProfile profile = new UserProfile();
         profile.setUser(user);
-        profile.setUsername(request.getUsername());
+        profile.setFirstName(request.getFirstName());
+        profile.setLastName(request.getLastName());
         profile.setDateOfBirth(request.getDateOfBirth());
         profile.setNationality(request.getNationality());
         profileRepository.save(profile);
@@ -126,7 +124,7 @@ public class AuthService {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BusinessValidationException(
                         "Your email has not been authorized by your organization. " +
-                        "Please contact your HR."));
+                                "Please contact your HR."));
 
         // 2. Guard against re-activation.
         if (user.isEnabled()) {
@@ -138,18 +136,13 @@ public class AuthService {
         if (user.getPassword() != null) {
             throw new BusinessValidationException(
                     "This account requires OTP verification, not activation. " +
-                    "Please check your email for the OTP.");
+                            "Please check your email for the OTP.");
         }
 
         // CSV row must have company and team assigned.
         if (user.getCompany() == null || user.getTeam() == null) {
             throw new BusinessValidationException(
                     "Your account is not fully configured. Please contact your HR.");
-        }
-
-        // Username uniqueness.
-        if (profileRepository.findByUsername(request.getUsername()).isPresent()) {
-            throw new BusinessValidationException("Username is already taken.");
         }
 
         // Guard against double-activation calls racing before OTP is verified.
@@ -166,7 +159,8 @@ public class AuthService {
         // Create UserProfile.
         UserProfile profile = new UserProfile();
         profile.setUser(user);
-        profile.setUsername(request.getUsername());
+        profile.setFirstName(request.getFirstName());
+        profile.setLastName(request.getLastName());
         profile.setDateOfBirth(request.getDateOfBirth());
         profile.setNationality(request.getNationality());
         profileRepository.save(profile);
@@ -187,7 +181,6 @@ public class AuthService {
                 .status("PENDING_VERIFICATION")
                 .build();
     }
-
 
     @Transactional
     public AuthActionResponse verify(VerifyOtpRequest request) {
@@ -221,6 +214,5 @@ public class AuthService {
                 .message("Account verified successfully. You can now log in.")
                 .build();
     }
-
 
 }

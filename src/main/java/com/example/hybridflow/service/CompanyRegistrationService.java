@@ -32,10 +32,6 @@ public class CompanyRegistrationService {
             throw new BusinessValidationException("A company with this name already exists.");
         }
 
-        if (userProfileRepository.findByUsername(request.getUsername()).isPresent()) {
-            throw new BusinessValidationException("Username is already taken.");
-        }
-
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             throw new BusinessValidationException("An account with this email already exists.");
         }
@@ -58,7 +54,8 @@ public class CompanyRegistrationService {
         // --- 3. Create the User Profile ---
         UserProfile profile = new UserProfile();
         profile.setUser(user);
-        profile.setUsername(request.getUsername());
+        profile.setFirstName(request.getFirstName());
+        profile.setLastName(request.getLastName());
         profile.setDateOfBirth(request.getDateOfBirth());
         profile.setNationality(request.getNationality());
         userProfileRepository.save(profile);

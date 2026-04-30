@@ -16,11 +16,14 @@ public class UserProfile {
 
     @OneToOne
     @JoinColumn(name = "user_id", nullable = false, unique = true)
-    //UserProfile table uses user_id as FK
+    // UserProfile table uses user_id as FK
     private User user;
 
-    @Column(unique = true, nullable = false)
-    private String username;
+    @Column(nullable = false, length = 100)
+    private String firstName;
+
+    @Column(nullable = false, length = 100)
+    private String lastName;
 
     private LocalDate dateOfBirth;
     private String nationality;

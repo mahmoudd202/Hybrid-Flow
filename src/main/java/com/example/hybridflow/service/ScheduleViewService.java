@@ -281,12 +281,14 @@ public class ScheduleViewService {
                 .sorted(Comparator.comparing(ScheduleEntryDTO::getDate))
                 .collect(Collectors.toList());
 
-        String username = user.getProfile() != null ? user.getProfile().getUsername() : null;
+        String firstName = user.getProfile() != null ? user.getProfile().getFirstName() : null;
+        String lastName = user.getProfile() != null ? user.getProfile().getLastName() : null;
 
         return new UserScheduleDTO(
                 user.getId(),
                 user.getEmail(),
-                username,
+                firstName,
+                lastName,
                 user.getRole().name(),
                 entryDtos);
     }

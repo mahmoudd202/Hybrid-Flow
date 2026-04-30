@@ -15,7 +15,8 @@ import java.util.List;
 public class UserScheduleDTO {
     private Long userId;
     private String email;
-    private String username;          // from UserProfile
-    private String roleName;          // HR / MANAGER / EMPLOYEE
+    private String firstName; // from UserProfile
+    private String lastName; // from UserProfile
+    private String roleName; // HR / MANAGER / EMPLOYEE
     private List<ScheduleEntryDTO> entries;
 }

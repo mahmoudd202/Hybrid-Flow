@@ -5,10 +5,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.core.ParameterizedTypeReference;
 
 import com.example.hybridflow.entity.AuthProvider;
 import com.example.hybridflow.entity.Invitation;
@@ -21,6 +25,8 @@ import com.example.hybridflow.security.JwtService;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -38,12 +44,16 @@ import java.util.Optional;
  *    → If NEITHER condition is true → reject with an error redirect.
  *      Nobody can join without HR authorization.
  *
- * CHANGED from original:
- *   - createOAuthUser() previously created any Google/GitHub user as GUEST
- *     with no company, no team, and no authorization check. Anyone with a
- *     Google account could get in.
- *   - Now new OAuth users are only accepted if they were authorized via CSV
- *     or via invitation. Unauthorized users are redirected to an error page.
+ * GitHub email handling:
+ *   GitHub users with a private email return null from the standard profile
+ *   endpoint. We fetch the real primary verified email from /user/emails
+ *   instead of falling back to a fake @github.local address.
+ *
+ * Name handling:
+ *   Google provides "given_name" / "family_name" directly.
+ *   GitHub provides a full "name" field (split on first space) or falls back
+ *   to the "login" handle. Results are stored as firstName / lastName on
+ *   UserProfile instead of the removed username field.
  */
 @Component
 public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
@@ -52,16 +62,19 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
     private final UserProfileRepository profileRepository;
     private final InvitationRepository invitationRepository;
     private final JwtService jwtService;
+    private final OAuth2AuthorizedClientService authorizedClientService;
 
     public OAuthSuccessHandler(
             UserRepository userRepository,
             UserProfileRepository profileRepository,
             InvitationRepository invitationRepository,
-            JwtService jwtService) {
+            JwtService jwtService,
+            OAuth2AuthorizedClientService authorizedClientService) {
         this.userRepository = userRepository;
         this.profileRepository = profileRepository;
         this.invitationRepository = invitationRepository;
         this.jwtService = jwtService;
+        this.authorizedClientService = authorizedClientService;
     }
 
     @Override
@@ -75,7 +88,13 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         OAuth2User oAuth2User = authToken.getPrincipal();
 
         String registrationId = authToken.getAuthorizedClientRegistrationId();
-        AuthProvider provider = AuthProvider.valueOf(registrationId.toUpperCase());
+        AuthProvider provider;
+        try {
+            provider = AuthProvider.valueOf(registrationId.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            response.sendRedirect("http://localhost:8080/login.html?error=unsupported_provider");
+            return;
+        }
 
         String providerId;
         String email;
@@ -91,21 +110,23 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
             Object emailAttr = oAuth2User.getAttribute("email");
             email = emailAttr != null ? emailAttr.toString() : null;
 
-            // GitHub accounts with no public email: use login@github.local as a fallback.
-            // This fallback email will almost certainly not match any CSV record or invitation,
-            // so the authorization check below will reject the user, which is the correct behavior.
-            if (email == null) {
-                Object loginAttr = oAuth2User.getAttribute("login");
-                email = (loginAttr != null ? loginAttr.toString() : "unknown") + "@github.local";
+            // GitHub users with a private email return null from the standard profile
+            // endpoint. Fetch the real primary verified email from /user/emails instead.
+            if (email == null || email.isBlank()) {
+                email = fetchPrimaryVerifiedGithubEmail(authToken);
+            }
+
+            if (email == null || email.isBlank()) {
+                response.sendRedirect("http://localhost:8080/login.html?error=github_email_not_available");
+                return;
             }
 
         } else {
-            // Any provider we don't support yet → redirect to error page.
             response.sendRedirect("http://localhost:8080/login.html?error=unsupported_provider");
             return;
         }
 
-        if (providerId == null || email == null) {
+        if (providerId == null || providerId.isBlank() || email == null || email.isBlank()) {
             response.sendRedirect("http://localhost:8080/login.html?error=missing_oauth_data");
             return;
         }
@@ -114,8 +135,6 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         final String finalProviderId = providerId;
 
         // ── CASE 1: Returning user ────────────────────────────────────────────
-        // An existing account was created via OAuth and is linked by provider+providerId.
-        // This is the normal returning-user path. No changes needed.
         Optional<User> existingByProvider =
                 userRepository.findByProviderAndProviderId(provider, providerId);
 
@@ -126,36 +145,22 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         }
 
         // ── CASE 2: New OAuth user — authorization check required ─────────────
-        // This person has never logged in via OAuth before.
-        // Check if they were pre-authorized by HR via CSV or invitation.
 
         // Check A: Was this email pre-loaded by HR via CSV?
-        // A CSV-planted user has: password=null, enabled=false, company and team assigned.
         Optional<User> csvUser = userRepository.findByEmail(finalEmail);
 
         if (csvUser.isPresent() && csvUser.get().getPassword() == null
                 && csvUser.get().getCompany() != null
                 && csvUser.get().getTeam() != null) {
 
-            // This is a CSV-planted user authenticating via OAuth for the first time.
-            // Link the OAuth identity to their existing record and activate them.
             User user = csvUser.get();
             user.setProvider(provider);
             user.setProviderId(finalProviderId);
-            // OAuth login counts as identity verification — enable the account.
             user.setEnabled(true);
             userRepository.save(user);
 
-            // Create a profile if one doesn't exist yet.
-            // (CSV upload does not create a profile — the user was supposed to set
-            // username etc. via /auth/activate. Since they chose OAuth instead, we
-            // generate a default username from their provider identity.)
             if (profileRepository.findByUserId(user.getId()).isEmpty()) {
-                UserProfile profile = new UserProfile();
-                profile.setUser(user);
-                // Default username: provider name + underscore + providerId.
-                // The user can update this later in their profile settings.
-                profile.setUsername(provider.name().toLowerCase() + "_" + finalProviderId);
+                UserProfile profile = createProfile(user, provider, oAuth2User);
                 profileRepository.save(profile);
             }
 
@@ -165,7 +170,6 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         }
 
         // Check B: Does this email have an active, unexpired invitation from HR?
-        // Uses the new InvitationRepository method: findFirstByEmailAndUsedFalseAndExpiryDateAfter
         Optional<Invitation> activeInvitation =
                 invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(
                         finalEmail, Instant.now());
@@ -173,8 +177,6 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         if (activeInvitation.isPresent()) {
             Invitation inv = activeInvitation.get();
 
-            // Create the user using the role, team, and company from the invitation.
-            // Do NOT default to GUEST — use the actual role HR intended.
             User user = new User();
             user.setEmail(finalEmail);
             user.setProvider(provider);
@@ -185,13 +187,9 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
             user.setEnabled(true);
             userRepository.save(user);
 
-            // Create a default profile. The user can update their username later.
-            UserProfile profile = new UserProfile();
-            profile.setUser(user);
-            profile.setUsername(provider.name().toLowerCase() + "_" + finalProviderId);
+            UserProfile profile = createProfile(user, provider, oAuth2User);
             profileRepository.save(profile);
 
-            // Mark invitation as used so it cannot be reused.
             inv.setUsed(true);
             invitationRepository.save(inv);
 
@@ -201,10 +199,122 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         }
 
         // ── CASE 3: Not authorized ────────────────────────────────────────────
-        // The email is not in the DB as a CSV-planted user and has no active invitation.
         response.sendRedirect(
                 "http://localhost:8080/login.html?error=not_authorized&message=" +
                 "Your+email+has+not+been+authorized+by+your+organization."
         );
     }
+
+    // ── GitHub email fetching ─────────────────────────────────────────────────
+
+    private String fetchPrimaryVerifiedGithubEmail(OAuth2AuthenticationToken authToken) {
+    OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient(
+            authToken.getAuthorizedClientRegistrationId(),
+            authToken.getName()
+    );
+
+    if (client == null || client.getAccessToken() == null) {
+        return null;
+    }
+
+    String accessToken = client.getAccessToken().getTokenValue();
+
+    List<Map<String, Object>> emails;
+
+    try {
+        emails = WebClient.create()
+                .get()
+                .uri("https://api.github.com/user/emails")
+                .headers(headers -> {
+                    headers.setBearerAuth(accessToken);
+                    headers.set("Accept", "application/vnd.github+json");
+                    headers.set("X-GitHub-Api-Version", "2022-11-28");
+                })
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {})
+                .block();
+
+    } catch (Exception ex) {
+        return null;
+    }
+
+    if (emails == null || emails.isEmpty()) {
+        return null;
+    }
+
+    return emails.stream()
+            .filter(e -> Boolean.TRUE.equals(e.get("primary")))
+            .filter(e -> Boolean.TRUE.equals(e.get("verified")))
+            .map(e -> e.get("email"))
+            .filter(String.class::isInstance)
+            .map(String.class::cast)
+            .findFirst()
+            .orElse(null);
+}
+    // ── Profile creation with firstName / lastName ────────────────────────────
+
+    private UserProfile createProfile(
+            User user,
+            AuthProvider provider,
+            OAuth2User oAuth2User) {
+        UserProfile profile = new UserProfile();
+        profile.setUser(user);
+
+        NameParts nameParts = extractName(provider, oAuth2User);
+        profile.setFirstName(nameParts.firstName());
+        profile.setLastName(nameParts.lastName());
+
+        return profile;
+    }
+
+    private NameParts extractName(AuthProvider provider, OAuth2User oAuth2User) {
+        if (provider == AuthProvider.GOOGLE) {
+            String firstName = oAuth2User.getAttribute("given_name");
+            String lastName  = oAuth2User.getAttribute("family_name");
+            return sanitizeName(firstName, lastName, "Google", "User");
+        }
+
+        if (provider == AuthProvider.GITHUB) {
+            String fullName = oAuth2User.getAttribute("name");
+
+            if (fullName != null && !fullName.isBlank()) {
+                return splitFullName(fullName);
+            }
+
+            String login = oAuth2User.getAttribute("login");
+            if (login != null && !login.isBlank()) {
+                return sanitizeName(login, "GitHub", "GitHub", "User");
+            }
+
+            return new NameParts("GitHub", "User");
+        }
+
+        return new NameParts("OAuth", "User");
+    }
+
+    private NameParts splitFullName(String fullName) {
+        String cleaned = fullName.trim();
+
+        if (cleaned.isBlank()) {
+            return new NameParts("OAuth", "User");
+        }
+
+        String[] parts = cleaned.split("\\s+", 2);
+        String firstName = parts[0];
+        String lastName  = parts.length > 1 ? parts[1] : "User";
+
+        return sanitizeName(firstName, lastName, "OAuth", "User");
+    }
+
+    private NameParts sanitizeName(
+            String firstName,
+            String lastName,
+            String fallbackFirstName,
+            String fallbackLastName) {
+        if (firstName == null || firstName.isBlank()) firstName = fallbackFirstName;
+        if (lastName  == null || lastName.isBlank())  lastName  = fallbackLastName;
+        return new NameParts(firstName.trim(), lastName.trim());
+    }
+
+    private record NameParts(String firstName, String lastName) {}
 }
