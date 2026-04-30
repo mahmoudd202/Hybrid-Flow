@@ -4,6 +4,6 @@ public enum TaskAssignmentStatus {
     TODO,
     IN_PROGRESS,
     DONE,
-    CANCELLED
-
+    CANCELLED,
+    PTO_UNASSIGNED
 }

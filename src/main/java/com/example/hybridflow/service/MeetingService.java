@@ -265,20 +265,16 @@ public class MeetingService {
         for (Meeting meeting : conflictingMeetings) {
             /*
              * Automatically handle PTO conflicts:
-             * 1. If the requester is the host, the meeting is cancelled (deleted).
+             * 1. If the requester is the host, the meeting is marked as PTO_CANCELLED.
+             * This provides a clear audit trail instead of just deleting the record.
              * 2. If the requester is a participant (via team), they are effectively
              * "declined".
-             * In this system, meetings are team-based, so we don't remove the user from the
-             * team,
-             * but the ScheduleViewService will already show them as OFF, which is the
-             * "user-friendly" way
-             * to show they won't attend.
+             * The ScheduleViewService will show them as OFF, which is the visual indicator.
              */
             if (meeting.getHost().getId().equals(requester.getId())) {
-                meetingRepository.delete(meeting);
+                meeting.setType(MeetingType.PTO_CANCELLED);
+                meetingRepository.save(meeting);
             }
-            // For team participants, the ScheduleView already handles the "visual decline"
-            // by showing the user as OFF.
         }
     }
 

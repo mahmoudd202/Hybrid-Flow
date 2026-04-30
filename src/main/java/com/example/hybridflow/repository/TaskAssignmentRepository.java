@@ -12,63 +12,77 @@ import java.util.Optional;
 
 public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, Long> {
 
-    @Query("""
-        select ta from TaskAssignment ta
-        join fetch ta.task t
-        join fetch ta.assignee a
-        join fetch t.createdBy cb
-        join fetch t.company c
-        join fetch t.team tm
-        where a.id = :userId
-        order by t.dueDate asc, ta.id desc
-    """)
-    List<TaskAssignment> findAllForAssignee(Long userId);
+  @Query("""
+          select ta from TaskAssignment ta
+          join fetch ta.task t
+          join fetch ta.assignee a
+          join fetch t.createdBy cb
+          join fetch t.company c
+          join fetch t.team tm
+          where a.id = :userId
+          order by t.dueDate asc, ta.id desc
+      """)
+  List<TaskAssignment> findAllForAssignee(Long userId);
 
-    @Query("""
-        select ta from TaskAssignment ta
-        join fetch ta.task t
-        join fetch ta.assignee a
-        join fetch t.createdBy cb
-        join fetch t.company c
-        join fetch t.team tm
-        where t.id = :taskId
-        order by a.id asc
-    """)
-    List<TaskAssignment> findAllByTaskId(Long taskId);
+  @Query("""
+          select ta from TaskAssignment ta
+          join fetch ta.task t
+          join fetch ta.assignee a
+          join fetch t.createdBy cb
+          join fetch t.company c
+          join fetch t.team tm
+          where t.id = :taskId
+          order by a.id asc
+      """)
+  List<TaskAssignment> findAllByTaskId(Long taskId);
 
-    @Query("""
-        select ta from TaskAssignment ta
-        join fetch ta.task t
-        join fetch ta.assignee a
-        join fetch t.createdBy cb
-        join fetch t.company c
-        join fetch t.team tm
-        where ta.id = :assignmentId
-    """)
-    Optional<TaskAssignment> findDetailedById(Long assignmentId);
+  @Query("""
+          select ta from TaskAssignment ta
+          join fetch ta.task t
+          join fetch ta.assignee a
+          join fetch t.createdBy cb
+          join fetch t.company c
+          join fetch t.team tm
+          where ta.id = :assignmentId
+      """)
+  Optional<TaskAssignment> findDetailedById(Long assignmentId);
 
-    @Query("""
-        select ta from TaskAssignment ta
-        join fetch ta.task t
-        join fetch ta.assignee a
-        where a.id = :userId
-          and ta.status in :statuses
-        order by t.dueDate asc, ta.id asc
-    """)
-    List<TaskAssignment> findPendingAssignmentsForUser(Long userId, List<TaskAssignmentStatus> statuses);
+  @Query("""
+          select ta from TaskAssignment ta
+          join fetch ta.task t
+          join fetch ta.assignee a
+          where a.id = :userId
+            and ta.status in :statuses
+          order by t.dueDate asc, ta.id asc
+      """)
+  List<TaskAssignment> findPendingAssignmentsForUser(Long userId, List<TaskAssignmentStatus> statuses);
 
-    @Query("""
-        select ta from TaskAssignment ta
-        join fetch ta.task t
-        join fetch ta.assignee a
-        join fetch t.createdBy cb
-        where a.id = :userId
-          and t.dueDate between :startDate and :endDate
-          and ta.status not in (
-            com.example.hybridflow.entity.TaskAssignmentStatus.DONE,
-            com.example.hybridflow.entity.TaskAssignmentStatus.CANCELLED
-          )
-        order by t.dueDate asc
-    """)
-    List<TaskAssignment> findActiveAssignmentsForUserInDateRange(Long userId, LocalDateTime startDate, LocalDateTime endDate);
+  /**
+   * Finds active (non-terminal) assignments for a user whose task due date falls
+   * within the given date range. Used by handlePtoRequest to identify assignments
+   * that need to be flagged as PTO_UNASSIGNED.
+   *
+   * Excluded statuses (terminal / already handled):
+   * - DONE : task is complete, no action needed
+   * - CANCELLED : already cancelled by a human actor
+   * - PTO_UNASSIGNED : already flagged by a previous PTO approval — prevents
+   * double-flagging if two overlapping PTO requests are
+   * approved in sequence
+   */
+  @Query("""
+          select ta from TaskAssignment ta
+          join fetch ta.task t
+          join fetch ta.assignee a
+          join fetch t.createdBy cb
+          where a.id = :userId
+            and t.dueDate between :startDate and :endDate
+            and ta.status not in (
+              com.example.hybridflow.entity.TaskAssignmentStatus.DONE,
+              com.example.hybridflow.entity.TaskAssignmentStatus.CANCELLED,
+              com.example.hybridflow.entity.TaskAssignmentStatus.PTO_UNASSIGNED
+            )
+          order by t.dueDate asc
+      """)
+  List<TaskAssignment> findActiveAssignmentsForUserInDateRange(Long userId, LocalDateTime startDate,
+      LocalDateTime endDate);
 }

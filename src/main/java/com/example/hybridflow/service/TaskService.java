@@ -193,23 +193,16 @@ public class TaskService {
         List<TaskAssignment> conflictingAssignments = taskAssignmentRepository.findActiveAssignmentsForUserInDateRange(
                 requester.getId(),
                 startDate.atStartOfDay(),
-                endDate.plusDays(1).atStartOfDay()
-        );
+                endDate.plusDays(1).atStartOfDay());
 
         /*
          * Automatically handle PTO conflicts for tasks:
-         * 1. For INDIVIDUAL tasks: The assignment is CANCELLED.
-         *    This informs the manager that the task needs a new assignee or a new due date.
-         * 2. For TEAM tasks: The specific user's assignment is removed.
-         *    The task remains active for other team members.
+         * Instead of deleting assignments, we mark them as PTO_UNASSIGNED.
+         * This provides a clear audit trail for both managers and employees.
          */
         for (TaskAssignment assignment : conflictingAssignments) {
-            if (assignment.getTask().getTargetType() == TaskTargetType.INDIVIDUAL) {
-                assignment.setStatus(TaskAssignmentStatus.CANCELLED);
-                taskAssignmentRepository.save(assignment);
-            } else {
-                taskAssignmentRepository.delete(assignment);
-            }
+            assignment.setStatus(TaskAssignmentStatus.PTO_UNASSIGNED);
+            taskAssignmentRepository.save(assignment);
         }
     }
 
