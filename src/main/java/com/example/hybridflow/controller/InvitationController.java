@@ -56,10 +56,7 @@ public class InvitationController {
             throw new BusinessValidationException("You cannot invite users to another company's team.");
         }
 
-        if (dto.getRole() == Role.GUEST) {
-            throw new BusinessValidationException("GUEST role is not allowed for invitations.");
-        }
-
+        
         invitationService.createAndSendInvitation(
                 dto.getEmail(),
                 dto.getRole(),
