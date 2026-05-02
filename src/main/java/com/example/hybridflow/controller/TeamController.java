@@ -2,6 +2,9 @@ package com.example.hybridflow.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,5 +33,18 @@ public class TeamController {
 
         TeamResponseDTO response = teamService.createTeam(dto, userDetails.getUser());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+    @GetMapping("/office/{officeId}")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<List<TeamResponseDTO>> getTeamsByOffice(
+            @PathVariable Long officeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        List<TeamResponseDTO> teams = teamService.getTeamsByOffice(officeId, userDetails.getUser());
+        return ResponseEntity.ok(teams);
     }
 }

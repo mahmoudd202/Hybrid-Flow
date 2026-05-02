@@ -1,10 +1,9 @@
 package com.example.hybridflow.service;
-
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.hybridflow.dto.*;
 import com.example.hybridflow.entity.*;
@@ -14,15 +13,19 @@ import com.example.hybridflow.repository.InvalidatedTokenRepository;
 import com.example.hybridflow.repository.UserProfileRepository;
 import com.example.hybridflow.repository.UserRepository;
 import com.example.hybridflow.repository.UserVerificationRepository;
+import com.example.hybridflow.repository.InvitationRepository;
+
 import com.example.hybridflow.security.JwtService;
 
 import java.time.Instant;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final InvitationRepository invitationRepository;
     private final UserProfileRepository profileRepository;
     private final UserVerificationRepository verificationRepository;
     private final InvalidatedTokenRepository invalidatedTokenRepository;
@@ -77,6 +80,56 @@ public class AuthService {
         return AuthActionResponse.builder()
                 .message("Logged out successfully.")
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public EmailCheckResponseDTO checkEmail(String email) {
+        // 1. Check InvitationRepository for pending invitations
+        // Assuming Invitation has a method like
+        // findFirstByEmailAndUsedFalseAndExpiryDateAfter
+        // And that an invitation is considered 'pending' if it's not used and not
+        // expired.
+        Instant now = Instant.now();
+        Optional<Invitation> invitationOptional = invitationRepository
+                .findFirstByEmailAndUsedFalseAndExpiryDateAfter(email, now);
+
+        if (invitationOptional.isPresent()) {
+            return EmailCheckResponseDTO.builder()
+                    .status("INVITATION_PENDING")
+                    .redirectPath("/auth/register-invited")
+                    .message("Invitation found. Please register using the invitation.")
+                    .build();
+        }
+
+        // 2. If not in invitation repo, then check the database in UserRepository
+        Optional<User> userOptional = userRepository.findByEmail(email);
+
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            // Assuming 'enabled' field indicates if the account needs activation (e.g.,
+            // email verification)
+            if (!user.isEnabled()) {
+                return EmailCheckResponseDTO.builder()
+                        .status("ACCOUNT_INACTIVE")
+                        .redirectPath("/auth/activate")
+                        .message("Account found but not active. Please activate your account.")
+                        .build();
+            } else {
+                // User exists and is enabled, implies they should just log in
+                return EmailCheckResponseDTO.builder()
+                        .status("ACCOUNT_ACTIVE")
+                        .redirectPath("/auth/login") // Or a specific login page
+                        .message("Account found and active. Please log in.")
+                        .build();
+            }
+        } else {
+            // 3. If not found in either, then not authorized
+            return EmailCheckResponseDTO.builder()
+                    .status("NOT_AUTHORIZED")
+                    .redirectPath(null)
+                    .message("Email not found in our system. Please contact support or request an invitation.")
+                    .build();
+        }
     }
 
     @Transactional

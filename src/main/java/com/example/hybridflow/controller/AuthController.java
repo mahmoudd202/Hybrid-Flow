@@ -13,12 +13,16 @@ import com.example.hybridflow.dto.AuthActionResponse;
 import com.example.hybridflow.dto.AuthResponse;
 import com.example.hybridflow.dto.CompanyRegistrationRequest;
 import com.example.hybridflow.dto.CsvActivationRequest;
+import com.example.hybridflow.dto.EmailCheckRequestDTO;
+import com.example.hybridflow.dto.EmailCheckResponseDTO;
 import com.example.hybridflow.dto.InvitedRegistrationRequest;
 import com.example.hybridflow.dto.LoginRequest;
 import com.example.hybridflow.dto.VerifyOtpRequest;
 import com.example.hybridflow.security.CustomUserDetails;
 import com.example.hybridflow.service.AuthService;
 import com.example.hybridflow.service.CompanyRegistrationService;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/auth")
@@ -71,6 +75,12 @@ public class AuthController {
                 .message("Registration successful. OTP sent to " + request.getEmail())
                 .status("PENDING_VERIFICATION")
                 .build());
+    }
+
+    @PostMapping("/check-email")
+    public ResponseEntity<EmailCheckResponseDTO> checkEmail(@Valid @RequestBody EmailCheckRequestDTO requestDTO) {
+        EmailCheckResponseDTO response = authService.checkEmail(requestDTO.getEmail());
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/register-invited")

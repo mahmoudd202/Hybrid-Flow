@@ -1,8 +1,12 @@
 package com.example.hybridflow.controller;
 
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -75,6 +79,19 @@ public class InvitationController {
                 .build();
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/pending")
+    @PreAuthorize("hasRole(\'HR\')")
+    public ResponseEntity<List<InvitationResponseDTO>> getPendingInvitationsForCompany(
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        List<InvitationResponseDTO> pendingInvitations = invitationService.getPendingInvitationsForCompany(userDetails.getUser());
+        return ResponseEntity.ok(pendingInvitations);
     }
 
     

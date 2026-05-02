@@ -1,5 +1,7 @@
 package com.example.hybridflow.dto;
 
+import java.time.Instant;
+
 import com.example.hybridflow.entity.Role;
 
 import lombok.Builder;
@@ -15,4 +17,5 @@ public class InvitationResponseDTO {
     private Long companyId;
     private String companyName;
     private String message;
+    private Instant expiryDate;
 }
