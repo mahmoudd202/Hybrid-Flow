@@ -29,7 +29,7 @@ public class User {
     private String providerId;
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
-    //UserProfile table references user
+    // UserProfile table references user
     private UserProfile profile;
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)

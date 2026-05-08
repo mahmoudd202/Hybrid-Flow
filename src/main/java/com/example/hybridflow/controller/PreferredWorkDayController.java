@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import com.example.hybridflow.security.CustomUserDetails;
 
 @RestController
 @RequestMapping("/api/preferences")
@@ -19,13 +20,13 @@ public class PreferredWorkDayController {
     @PostMapping("/online-days")
     public ResponseEntity<PreferredWorkDaysResponseDTO> setPreferredDays(
             @RequestBody PreferredWorkDaysRequestDTO dto,
-            @AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(preferredWorkDayService.setPreferredDays(dto, user));
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(preferredWorkDayService.setPreferredDays(dto, userDetails.getUser()));
     }
 
     @GetMapping("/online-days")
     public ResponseEntity<PreferredWorkDaysResponseDTO> getMyPreferredDays(
-            @AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(preferredWorkDayService.getMyPreferredDays(user));
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(preferredWorkDayService.getMyPreferredDays(userDetails.getUser()));
     }
 }
