@@ -57,6 +57,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String email = jwtService.extractEmail(token);
         UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
+        // 4. Reject if the account has been deactivated.
+        if (!userDetails.isEnabled()) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 5. All checks passed — authenticate the request.
         UsernamePasswordAuthenticationToken authToken =
                 new UsernamePasswordAuthenticationToken(
                         userDetails,

@@ -1,6 +1,6 @@
 package com.example.hybridflow.service;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -158,11 +158,13 @@ public class TaskService {
         return taskMapper.toTaskDetailsResponse(saved, assignments, excludedAssignees);
     }
 
+    @Transactional(readOnly = true)
     public List<Task> getManagerCreatedTasks(User manager) {
         validateManagerContext(manager);
         return taskRepository.findAllCreatedForManagedTeam(manager.getId());
     }
 
+    @Transactional(readOnly = true)
     public List<TaskAssignment> getMyAssignments(User user) {
         if (user == null) {
             throw new AccessDeniedException("Unauthenticated");
@@ -171,6 +173,7 @@ public class TaskService {
         return taskAssignmentRepository.findAllForAssignee(user.getId());
     }
 
+    @Transactional(readOnly = true)
     public List<TaskAssignment> getAssignmentsForTask(Long taskId, User manager) {
         validateManagerContext(manager);
 

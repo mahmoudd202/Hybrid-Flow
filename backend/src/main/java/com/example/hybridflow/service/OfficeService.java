@@ -1,6 +1,6 @@
 package com.example.hybridflow.service;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.access.AccessDeniedException;
@@ -24,6 +24,7 @@ public class OfficeService {
 
     private final OfficeRepository officeRepository;
 
+    @Transactional(readOnly = true)
     public List<OfficeResponseDTO> getByCompany(User currentUser) {
         Company company = validateHrCompanyContext(currentUser);
 
@@ -33,6 +34,7 @@ public class OfficeService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public FirstOfficeResponseDTO getFirstByCompany(User currentUser) {
         Company company = validateHrCompanyContext(currentUser);
 
@@ -55,8 +57,7 @@ public class OfficeService {
 
         if (officeRepository.existsByNameAndCompanyId(normalizedName, company.getId())) {
             throw new BusinessValidationException(
-                    "An office with the name '" + normalizedName + "' already exists in your company."
-            );
+                    "An office with the name '" + normalizedName + "' already exists in your company.");
         }
 
         Office office = new Office();

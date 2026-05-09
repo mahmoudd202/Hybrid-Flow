@@ -20,15 +20,13 @@ public class Team {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "office_id")
-    private Office office;  
+    private Office office;
 
     @Column(nullable = false, length = 150)
     private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY)  // I think OnetoOne is better, since a manager will take care of one team only
+    @ManyToOne(fetch = FetchType.LAZY) // I think OnetoOne is better, since a manager will take care of one team only
     @JoinColumn(name = "manager_id")
-    private User manager;  // Team table owns the manager FK
+    private User manager; // Team table owns the manager FK
 
 }
-
-

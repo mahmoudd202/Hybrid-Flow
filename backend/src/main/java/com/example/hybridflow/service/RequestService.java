@@ -118,6 +118,7 @@ public class RequestService {
         return toResponse(saved);
     }
 
+    @Transactional(readOnly = true)
     public List<RequestResponseDTO> getRequestsByUser(User currentUser) {
         validateAuthenticatedUser(currentUser);
 
@@ -147,6 +148,7 @@ public class RequestService {
         requestRepository.delete(request);
     }
 
+    @Transactional(readOnly = true)
     public List<RequestResponseDTO> getPendingRequestsByCompany(User hrUser) {
         validateHrContext(hrUser);
 
