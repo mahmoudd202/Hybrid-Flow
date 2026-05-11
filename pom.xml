@@ -60,8 +60,6 @@
 			<artifactId>mysql-connector-j</artifactId>
 			<scope>runtime</scope>
 		</dependency>
-
-		<!-- OpenCSV for CSV parsing  -->
 		<dependency>
 			<groupId>com.opencsv</groupId>
 			<artifactId>opencsv</artifactId>
@@ -77,6 +75,11 @@
 			<artifactId>jjwt-api</artifactId>
 			<version>0.13.0</version>
 			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.gurobi</groupId>
+			<artifactId>gurobi</artifactId>
+			<version>13.0.2</version>
 		</dependency>
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
