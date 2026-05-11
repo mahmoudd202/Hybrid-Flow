@@ -4,6 +4,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
@@ -64,6 +65,9 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
     private final JwtService jwtService;
     private final OAuth2AuthorizedClientService authorizedClientService;
 
+    @Value("${app.frontend-base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
+
     public OAuthSuccessHandler(
             UserRepository userRepository,
             UserProfileRepository profileRepository,
@@ -92,7 +96,7 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         try {
             provider = AuthProvider.valueOf(registrationId.toUpperCase());
         } catch (IllegalArgumentException ex) {
-            response.sendRedirect("http://localhost:8080/login.html?error=unsupported_provider");
+            response.sendRedirect(frontendBaseUrl + "/oauth/callback?error=unsupported_provider");
             return;
         }
 
@@ -117,17 +121,17 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
             }
 
             if (email == null || email.isBlank()) {
-                response.sendRedirect("http://localhost:8080/login.html?error=github_email_not_available");
+                response.sendRedirect(frontendBaseUrl + "/oauth/callback?error=github_email_not_available");
                 return;
             }
 
         } else {
-            response.sendRedirect("http://localhost:8080/login.html?error=unsupported_provider");
+            response.sendRedirect(frontendBaseUrl + "/oauth/callback?error=unsupported_provider");
             return;
         }
 
         if (providerId == null || providerId.isBlank() || email == null || email.isBlank()) {
-            response.sendRedirect("http://localhost:8080/login.html?error=missing_oauth_data");
+            response.sendRedirect(frontendBaseUrl + "/oauth/callback?error=missing_oauth_data");
             return;
         }
 
@@ -140,7 +144,7 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
 
         if (existingByProvider.isPresent()) {
             String jwt = jwtService.generateToken(existingByProvider.get());
-            response.sendRedirect("http://localhost:8080/login.html?token=" + jwt);
+            response.sendRedirect(frontendBaseUrl + "/oauth/callback?token=" + jwt);
             return;
         }
 
@@ -165,7 +169,7 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
             }
 
             String jwt = jwtService.generateToken(user);
-            response.sendRedirect("http://localhost:8080/login.html?token=" + jwt);
+            response.sendRedirect(frontendBaseUrl + "/oauth/callback?token=" + jwt);
             return;
         }
 
@@ -194,13 +198,13 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
             invitationRepository.save(inv);
 
             String jwt = jwtService.generateToken(user);
-            response.sendRedirect("http://localhost:8080/login.html?token=" + jwt);
+            response.sendRedirect(frontendBaseUrl + "/oauth/callback?token=" + jwt);
             return;
         }
 
         // ── CASE 3: Not authorized ────────────────────────────────────────────
         response.sendRedirect(
-                "http://localhost:8080/login.html?error=not_authorized&message=" +
+                frontendBaseUrl + "/oauth/callback?error=not_authorized&message=" +
                 "Your+email+has+not+been+authorized+by+your+organization."
         );
     }
