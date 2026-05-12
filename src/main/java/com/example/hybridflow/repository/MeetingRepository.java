@@ -2,6 +2,7 @@ package com.example.hybridflow.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.example.hybridflow.entity.Meeting;
@@ -30,12 +31,15 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
   // This one query handles both the "Team View" and the "Individual View"
   // while preventing N+1 and LazyInitializationExceptions.
-  @Query("SELECT m FROM Meeting m " +
-      "JOIN FETCH m.office " +
-      "JOIN FETCH m.host " +
-      "JOIN FETCH m.participatingTeams t " +
-      "WHERE t.id = :teamId")
-  List<Meeting> findByTeamWithDetails(Long id);
+  @Query("""
+          select distinct m from Meeting m
+          join fetch m.office o
+          join fetch m.host h
+          join fetch m.participatingTeams t
+          where t.id = :teamId
+          order by m.startTime asc
+      """)
+  List<Meeting> findByTeamWithDetails(@Param("teamId") Long teamId);
 
   @Query("""
           select distinct m from Meeting m
@@ -90,37 +94,35 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
       Long teamId, LocalDateTime rangeStart, LocalDateTime rangeEnd, Long excludeId);
 
   @Query("""
-        select distinct m from Meeting m
-        join fetch m.office o
-        join fetch m.host h
-        join fetch m.participatingTeams pt
-        join User u on u.team = pt
-        where u.id = :userId
-          and m.startTime < :rangeEnd
-          and m.endTime > :rangeStart
-        order by m.startTime asc
-    """)
-List<Meeting> findUserMeetingsInRange(
-        Long userId,
-        LocalDateTime rangeStart,
-        LocalDateTime rangeEnd
-);
+          select distinct m from Meeting m
+          join fetch m.office o
+          join fetch m.host h
+          join fetch m.participatingTeams pt
+          join User u on u.team = pt
+          where u.id = :userId
+            and m.startTime < :rangeEnd
+            and m.endTime > :rangeStart
+          order by m.startTime asc
+      """)
+  List<Meeting> findUserMeetingsInRange(
+      Long userId,
+      LocalDateTime rangeStart,
+      LocalDateTime rangeEnd);
 
-@Query("""
-        select distinct m from Meeting m
-        join fetch m.office o
-        join fetch m.host h
-        join fetch m.participatingTeams pt
-        join User u on u.team = pt
-        where u.id = :userId
-          and m.type = com.example.hybridflow.entity.MeetingType.OFFICE
-          and m.startTime < :rangeEnd
-          and m.endTime > :rangeStart
-        order by m.startTime asc
-    """)
-List<Meeting> findUserOfficeMeetingsInRange(
-        Long userId,
-        LocalDateTime rangeStart,
-        LocalDateTime rangeEnd
-);
+  @Query("""
+          select distinct m from Meeting m
+          join fetch m.office o
+          join fetch m.host h
+          join fetch m.participatingTeams pt
+          join User u on u.team = pt
+          where u.id = :userId
+            and m.type = com.example.hybridflow.entity.MeetingType.OFFICE
+            and m.startTime < :rangeEnd
+            and m.endTime > :rangeStart
+          order by m.startTime asc
+      """)
+  List<Meeting> findUserOfficeMeetingsInRange(
+      Long userId,
+      LocalDateTime rangeStart,
+      LocalDateTime rangeEnd);
 }

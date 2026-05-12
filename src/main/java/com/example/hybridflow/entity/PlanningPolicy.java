@@ -1,6 +1,9 @@
 package com.example.hybridflow.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -21,29 +24,42 @@ public class PlanningPolicy {
     @Column(nullable = false, length = 150)
     private String name;
 
-    // Minimum required office days per employee in a week
-    @Column(name = "min_office_days_per_week")
-    private Integer minOfficeDaysPerWeek;  // used Integer so it can be null
+    @NotNull
+    @Min(1)
+    @Max(5)
+    @Column(name = "working_days_per_week", nullable = false)
+    private Integer workingDaysPerWeek;
 
-    // Maximum allowed office days per employee in a week
-    @Column(name = "max_office_days_per_week")
-    private Integer maxOfficeDaysPerWeek; // used Integer so it can be null
+    @NotNull
+    @Min(0)
+    @Column(name = "min_office_days_per_week", nullable = false)
+    private Integer minOfficeDaysPerWeek;
 
-    // Maximum number of employees allowed in office per day
-    @Column(name = "daily_capacity")
-    private Integer dailyCapacity; // used Integer so it can be null
+    @NotNull
+    @Min(0)
+    @Column(name = "max_office_days_per_week", nullable = false)
+    private Integer maxOfficeDaysPerWeek;
 
-    // Maximum allowed consecutive office days
-    @Column(name = "max_consecutive_office_days")
-    private Integer maxConsecutiveOfficeDays; // used Integer so it can be null
+    @NotNull
+    @Min(1)
+    @Column(name = "daily_capacity", nullable = false)
+    private Integer dailyCapacity;
 
-    // Minimum number of shared in-office days for a team
-    @Column(name = "min_team_shared_days")
-    private Integer minTeamSharedDays; // used Integer so it can be null
+    @NotNull
+    @Min(1)
+    @Column(name = "max_consecutive_office_days", nullable = false)
+    private Integer maxConsecutiveOfficeDays;
 
-    // Simple fairness setting for now
-    @Column(name = "fairness_weight")
-    private Integer fairnessWeight;
+    @NotNull
+    @Min(0)
+    @Column(name = "min_team_shared_days", nullable = false)
+    private Integer minTeamSharedDays;
+
+    @NotNull
+    @Min(0)
+    @Max(100)
+    @Column(name = "co_presence_threshold_percentage_per_day", nullable = false)
+    private Integer coPresenceThresholdPercentagePerDay;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

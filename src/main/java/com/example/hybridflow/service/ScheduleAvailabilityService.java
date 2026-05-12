@@ -23,7 +23,7 @@ public class ScheduleAvailabilityService {
 
     /**
      * Strict validation for flows where unavailable users should block the action.
-     * After removing SICK_LEAVE, only OFF means unavailable.
+     * only OFF means unavailable.
      */
     public void validateUserIsSchedulableOnDate(User user, LocalDate date) {
         ScheduleEntry entry = scheduleEntryRepository.findPublishedEntryForUserOnDate(user.getId(), date)
@@ -40,7 +40,7 @@ public class ScheduleAvailabilityService {
 
     /**
      * Strict validation for flows where unavailable users should block the action.
-     * After removing SICK_LEAVE, only OFF means unavailable.
+     * only OFF means unavailable.
      */
     public void validateUsersAreSchedulableOnDate(List<User> users, LocalDate date) {
         List<String> conflicts = new ArrayList<>();

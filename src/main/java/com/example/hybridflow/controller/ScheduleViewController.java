@@ -67,7 +67,7 @@ public class ScheduleViewController {
     }
 
     @GetMapping("/company")
-    @PreAuthorize("hasRole('HR')")
+    @PreAuthorize("hasAnyRole('MANAGER','HR')")
     public ResponseEntity<ScheduleViewResponseDTO> getCompanySchedule(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,

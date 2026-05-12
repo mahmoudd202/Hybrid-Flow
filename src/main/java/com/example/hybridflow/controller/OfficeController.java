@@ -29,7 +29,7 @@ public class OfficeController {
      * Frontend usage: fetch all offices for the authenticated HR user's company.
      */
     @GetMapping("/company")
-    @PreAuthorize("hasRole('HR')")
+    @PreAuthorize("hasAnyRole('MANAGER','HR')")
     public ResponseEntity<List<OfficeResponseDTO>> getByCompany(
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {

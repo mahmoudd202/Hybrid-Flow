@@ -74,8 +74,8 @@ public class OfficeService {
             throw new AccessDeniedException("Unauthenticated");
         }
 
-        if (user.getRole() != Role.HR) {
-            throw new AccessDeniedException("Only HR can manage offices");
+        if (user.getRole() != Role.HR && user.getRole() != Role.MANAGER) {
+            throw new AccessDeniedException("Only HR or managers can view company offices");
         }
 
         if (user.getCompany() == null) {

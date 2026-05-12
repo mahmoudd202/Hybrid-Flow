@@ -121,8 +121,8 @@ public class ScheduleViewService {
         validateDateRange(from, to);
         User currentUser = getFreshUser(requester);
 
-        if (currentUser.getRole() != Role.HR) {
-            throw new AccessDeniedException("Only HR can view the company-wide schedule");
+        if (currentUser.getRole() != Role.HR && currentUser.getRole() != Role.MANAGER) {
+            throw new AccessDeniedException("Only HR or managers can view the company-wide schedule");
         }
         if (currentUser.getCompany() == null) {
             throw new AccessDeniedException("You are not attached to a company");
