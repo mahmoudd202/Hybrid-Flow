@@ -1,0 +1,195 @@
+package com.example.hybridflow.service;
+
+import com.example.hybridflow.dto.IndividualFairnessDTO;
+import com.example.hybridflow.dto.TeamFairnessDTO;
+import com.example.hybridflow.entity.*;
+import com.example.hybridflow.repository.*;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class ScheduleEvaluationService {
+
+    private final ScheduleEntryRepository scheduleEntryRepository;
+    private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
+    private final PlanningPolicyRepository planningPolicyRepository;
+    private final PreferredWorkDayRepository preferredWorkDayRepository;
+
+    public EvaluationResult evaluateSchedules(List<Long> scheduleIds, List<User> users, List<Team> teams,
+            PlanningPolicy policy, LocalDate startDate, LocalDate endDate) {
+        Map<Long, List<ScheduleEntry>> userScheduleEntries = new HashMap<>();
+        for (Long scheduleId : scheduleIds) {
+            List<ScheduleEntry> entries = scheduleEntryRepository.findByScheduleId(scheduleId);
+            for (ScheduleEntry entry : entries) {
+                userScheduleEntries.computeIfAbsent(entry.getUser().getId(), k -> new ArrayList<>()).add(entry);
+            }
+        }
+
+        List<IndividualFairnessDTO> individualScores = calculateIndividualFairness(users, userScheduleEntries, policy,
+                startDate, endDate);
+        List<TeamFairnessDTO> teamScores = calculateTeamFairness(teams, individualScores);
+        double overallScore = calculateOverallFairness(teamScores);
+
+        return new EvaluationResult(overallScore, teamScores, individualScores);
+    }
+
+    private List<IndividualFairnessDTO> calculateIndividualFairness(List<User> users,
+            Map<Long, List<ScheduleEntry>> userScheduleEntries, PlanningPolicy policy, LocalDate startDate,
+            LocalDate endDate) {
+        List<IndividualFairnessDTO> scores = new ArrayList<>();
+        for (User user : users) {
+            List<ScheduleEntry> entries = userScheduleEntries.getOrDefault(user.getId(), Collections.emptyList());
+            Map<String, String> breakdown = new HashMap<>();
+            double score = 0.0;
+
+            // 1. Office/Online Day Balance & Difference from Target
+            long officeDays = entries.stream().filter(e -> e.getWorkMode() == WorkMode.OFFICE).count();
+            long totalWorkDays = entries.size();
+
+            double officeDayBalanceScore = 0.0;
+            if (totalWorkDays > 0) {
+                double targetMin = policy.getMinOfficeDaysPerWeek();
+                double targetMax = policy.getMaxOfficeDaysPerWeek();
+
+                if (officeDays >= targetMin && officeDays <= targetMax) {
+                    officeDayBalanceScore = 1.0;
+                } else if (officeDays < targetMin) {
+                    officeDayBalanceScore = 1.0 - (targetMin - officeDays) / targetMin;
+                } else {
+                    officeDayBalanceScore = 1.0 - (officeDays - targetMax) / targetMax;
+                }
+                officeDayBalanceScore = Math.max(0, officeDayBalanceScore);
+            }
+            breakdown.put("officeDayBalance", String.format("%.2f", officeDayBalanceScore));
+
+            // 2. Preferred Work Days Satisfaction
+            Set<DayOfWeek> preferredDays = preferredWorkDayRepository.findByUserId(user.getId()).stream()
+                    .map(PreferredWorkDay::getDayOfWeek)
+                    .collect(Collectors.toSet());
+            long satisfiedPreferredDays = entries.stream()
+                    .filter(e -> e.getWorkMode() == WorkMode.OFFICE
+                            && preferredDays.contains(e.getDate().getDayOfWeek()))
+                    .count();
+            double preferenceSatisfactionScore = preferredDays.isEmpty() ? 1.0
+                    : (double) satisfiedPreferredDays / preferredDays.size();
+            breakdown.put("preferenceSatisfaction", String.format("%.2f", preferenceSatisfactionScore));
+
+            // 3. Weekly Distribution Balance
+            double distributionBalanceScore = 1.0;
+            if (totalWorkDays > 0 && officeDays > 0) {
+                long minDay = entries.stream().filter(e -> e.getWorkMode() == WorkMode.OFFICE)
+                        .map(ScheduleEntry::getDate).mapToLong(d -> d.toEpochDay()).min().orElse(0);
+                long maxDay = entries.stream().filter(e -> e.getWorkMode() == WorkMode.OFFICE)
+                        .map(ScheduleEntry::getDate).mapToLong(d -> d.toEpochDay()).max().orElse(0);
+                long span = maxDay - minDay + 1;
+                if (span > 0) {
+                    distributionBalanceScore = (double) officeDays / span;
+                }
+            }
+            breakdown.put("distributionBalance", String.format("%.2f", distributionBalanceScore));
+
+            score = (officeDayBalanceScore * 0.4 + preferenceSatisfactionScore * 0.4 + distributionBalanceScore * 0.2)
+                    * 100;
+            score = Math.max(0, Math.min(100, score));
+
+            scores.add(IndividualFairnessDTO.builder()
+                    .userId(user.getId())
+                    .userEmail(user.getEmail())
+                    .score(Math.round(score * 100.0) / 100.0)
+                    .breakdown(breakdown)
+                    .build());
+        }
+        return scores;
+    }
+
+    private List<TeamFairnessDTO> calculateTeamFairness(List<Team> teams,
+            List<IndividualFairnessDTO> individualScores) {
+        List<TeamFairnessDTO> scores = new ArrayList<>();
+        Map<Long, List<IndividualFairnessDTO>> teamIndividualScores = individualScores.stream()
+                .collect(Collectors
+                        .groupingBy(dto -> userRepository.findById(dto.getUserId()).orElseThrow().getTeam().getId()));
+
+        for (Team team : teams) {
+            List<IndividualFairnessDTO> membersScores = teamIndividualScores.getOrDefault(team.getId(),
+                    Collections.emptyList());
+            Map<String, String> breakdown = new HashMap<>();
+            double teamScore = 0.0;
+
+            if (!membersScores.isEmpty()) {
+                double averageIndividualScore = membersScores.stream().mapToDouble(IndividualFairnessDTO::getScore)
+                        .average().orElse(0.0);
+                breakdown.put("averageIndividualScore", String.format("%.2f", averageIndividualScore));
+
+                double variance = membersScores.stream()
+                        .mapToDouble(IndividualFairnessDTO::getScore)
+                        .map(s -> Math.pow(s - averageIndividualScore, 2))
+                        .average().orElse(0.0);
+                double stdDev = Math.sqrt(variance);
+
+                double penalty = 0.0;
+                if (stdDev > 10) {
+                    penalty = (stdDev - 10) * 0.5;
+                }
+                breakdown.put("individualScoreStdDev", String.format("%.2f", stdDev));
+                breakdown.put("variancePenalty", String.format("%.2f", penalty));
+
+                teamScore = averageIndividualScore - penalty;
+            } else {
+                teamScore = 100.0;
+            }
+            teamScore = Math.max(0, Math.min(100, teamScore));
+
+            scores.add(TeamFairnessDTO.builder()
+                    .teamId(team.getId())
+                    .teamName(team.getName())
+                    .score(Math.round(teamScore * 100.0) / 100.0)
+                    .breakdown(breakdown)
+                    .build());
+        }
+        return scores;
+    }
+
+    private double calculateOverallFairness(List<TeamFairnessDTO> teamScores) {
+        double overallScore = 0.0;
+
+        if (!teamScores.isEmpty()) {
+            double averageTeamScore = teamScores.stream().mapToDouble(TeamFairnessDTO::getScore).average().orElse(0.0);
+
+            double variance = teamScores.stream()
+                    .mapToDouble(TeamFairnessDTO::getScore)
+                    .map(s -> Math.pow(s - averageTeamScore, 2))
+                    .average().orElse(0.0);
+            double stdDev = Math.sqrt(variance);
+
+            double penalty = 0.0;
+            if (stdDev > 5) {
+                penalty = (stdDev - 5) * 1.0;
+            }
+
+            overallScore = averageTeamScore - penalty;
+        } else {
+            overallScore = 100.0;
+        }
+        overallScore = Math.max(0, Math.min(100, overallScore));
+
+        return Math.round(overallScore * 100.0) / 100.0;
+    }
+
+    @Data
+    @AllArgsConstructor
+    public static class EvaluationResult {
+        private double overallFairnessScore;
+        private List<TeamFairnessDTO> teamFairnessScores;
+        private List<IndividualFairnessDTO> individualFairnessScores;
+    }
+}

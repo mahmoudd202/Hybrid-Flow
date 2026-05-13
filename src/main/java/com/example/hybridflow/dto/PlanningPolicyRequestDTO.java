@@ -24,10 +24,6 @@ public class PlanningPolicyRequestDTO {
     @Min(value = 0, message = "maxOfficeDaysPerWeek must be at least 0")
     private Integer maxOfficeDaysPerWeek;
  
-    @NotNull(message = "dailyCapacity is required")
-    @Min(value = 1, message = "dailyCapacity must be at least 1")
-    private Integer dailyCapacity;
- 
     @NotNull(message = "maxConsecutiveOfficeDays is required")
     @Min(value = 1, message = "maxConsecutiveOfficeDays must be at least 1")
     private Integer maxConsecutiveOfficeDays;

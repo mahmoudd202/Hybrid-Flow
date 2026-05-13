@@ -146,7 +146,6 @@ public class PlanningPolicyService {
         policy.setWorkingDaysPerWeek(dto.getWorkingDaysPerWeek());
         policy.setMinOfficeDaysPerWeek(dto.getMinOfficeDaysPerWeek());
         policy.setMaxOfficeDaysPerWeek(dto.getMaxOfficeDaysPerWeek());
-        policy.setDailyCapacity(dto.getDailyCapacity());
         policy.setMaxConsecutiveOfficeDays(dto.getMaxConsecutiveOfficeDays());
         policy.setMinTeamSharedDays(dto.getMinTeamSharedDays());
         policy.setCoPresenceThresholdPercentagePerDay(dto.getCoPresenceThresholdPercentagePerDay());
@@ -160,7 +159,6 @@ public class PlanningPolicyService {
                 .workingDaysPerWeek(policy.getWorkingDaysPerWeek())
                 .minOfficeDaysPerWeek(policy.getMinOfficeDaysPerWeek())
                 .maxOfficeDaysPerWeek(policy.getMaxOfficeDaysPerWeek())
-                .dailyCapacity(policy.getDailyCapacity())
                 .maxConsecutiveOfficeDays(policy.getMaxConsecutiveOfficeDays())
                 .minTeamSharedDays(policy.getMinTeamSharedDays())
                 .coPresenceThresholdPercentagePerDay(policy.getCoPresenceThresholdPercentagePerDay())

@@ -15,7 +15,6 @@ public class PlanningPolicyResponseDTO {
     private Integer workingDaysPerWeek;
     private Integer minOfficeDaysPerWeek;
     private Integer maxOfficeDaysPerWeek;
-    private Integer dailyCapacity;
     private Integer maxConsecutiveOfficeDays;
     private Integer minTeamSharedDays;
     private Integer coPresenceThresholdPercentagePerDay;

@@ -42,11 +42,6 @@ public class PlanningPolicy {
 
     @NotNull
     @Min(1)
-    @Column(name = "daily_capacity", nullable = false)
-    private Integer dailyCapacity;
-
-    @NotNull
-    @Min(1)
     @Column(name = "max_consecutive_office_days", nullable = false)
     private Integer maxConsecutiveOfficeDays;
 

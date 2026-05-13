@@ -13,24 +13,26 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
+
     Optional<User> findByProviderAndProviderId(
             AuthProvider provider,
-            String providerId
-    );
+            String providerId);
 
     // Find all employees in a team
-//    List<User> findByTeamId(Long teamId);
+    // List<User> findByTeamId(Long teamId);
+    
+    List<User> findByTeamIdIn(List<Long> teamIds);
 
     List<User> findAllByTeamId(Long teamId);
 
     boolean existsByEmail(String email);
 
     @Query("""
-    select u from User u
-    left join fetch u.company
-    left join fetch u.team t
-    left join fetch t.office
-    where u.email = :email
-""")
+                select u from User u
+                left join fetch u.company
+                left join fetch u.team t
+                left join fetch t.office
+                where u.email = :email
+            """)
     Optional<User> findAuthContextByEmail(@Param("email") String email);
 }

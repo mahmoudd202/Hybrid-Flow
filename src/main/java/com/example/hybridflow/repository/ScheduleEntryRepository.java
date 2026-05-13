@@ -18,6 +18,8 @@ public interface ScheduleEntryRepository extends JpaRepository<ScheduleEntry, Lo
 
     List<ScheduleEntry> findByScheduleId(Long scheduleId);
 
+    void deleteByScheduleId(Long scheduleId);
+
     // Check office occupancy for a specific day (Important for PlanningPolicy validation)
     // that's AI recommended Idk about
     long countBySchedule_Office_IdAndDateAndWorkMode(Long officeId, LocalDate date, WorkMode mode);
