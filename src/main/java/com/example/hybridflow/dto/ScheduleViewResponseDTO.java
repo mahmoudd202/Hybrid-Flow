@@ -7,12 +7,6 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 import java.util.List;
 
-/**
- * Root response wrapper returned by the schedule-viewing endpoints.
- * <p>
- * For EMPLOYEE / MANAGER → contains exactly 1 team.<br>
- * For HR → contains all teams in the company.
- */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

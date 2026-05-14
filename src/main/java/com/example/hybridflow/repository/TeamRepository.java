@@ -21,4 +21,7 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
 
     List<Team> findByCompanyId(Long companyId);
 
+    List<Team> findByCompanyIdOrderByNameAsc(Long companyId);
+
+    List<Team> findByIdInAndCompanyId(List<Long> ids, Long companyId);
 }

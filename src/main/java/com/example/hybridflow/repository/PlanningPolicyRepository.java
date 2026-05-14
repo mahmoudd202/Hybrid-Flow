@@ -17,4 +17,6 @@ public interface PlanningPolicyRepository extends JpaRepository<PlanningPolicy, 
     // to get the active policy of a company,,, usually, we only want the most recent
     // one
     Optional<PlanningPolicy> findFirstByCompanyIdOrderByCreatedAtDesc(Long companyId);
+
+    Optional<PlanningPolicy> findByIdAndCompanyId(Long id, Long companyId);
 }

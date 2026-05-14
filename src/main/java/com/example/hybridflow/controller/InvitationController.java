@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.hybridflow.dto.InvitationRequestDTO;
 import com.example.hybridflow.dto.InvitationResponseDTO;
 import com.example.hybridflow.entity.Company;
-import com.example.hybridflow.entity.Role;
 import com.example.hybridflow.entity.Team;
 import com.example.hybridflow.exception.BusinessValidationException;
 import com.example.hybridflow.repository.TeamRepository;

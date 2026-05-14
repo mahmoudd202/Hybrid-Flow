@@ -2,7 +2,6 @@ package com.example.hybridflow.controller;
 
 import com.example.hybridflow.dto.PreferredWorkDaysRequestDTO;
 import com.example.hybridflow.dto.PreferredWorkDaysResponseDTO;
-import com.example.hybridflow.entity.User;
 import com.example.hybridflow.service.PreferredWorkDayService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

@@ -2,6 +2,7 @@ package com.example.hybridflow.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.example.hybridflow.entity.Schedule;
@@ -12,7 +13,9 @@ import java.util.List;
 @Repository
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
 
-  // Find all published schedules for a team that overlap a date range.
+  // ── Existing queries (unchanged) ─────────────────────────────────────────
+
+  /** All published schedules for a team overlapping [rangeFrom, rangeTo]. */
   @Query("""
           select s from Schedule s
           join fetch s.team t
@@ -24,13 +27,13 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
           order by s.startDate asc
       """)
   List<Schedule> findPublishedForTeamInRange(
-      Long teamId,
-      LocalDate rangeFrom,
-      LocalDate rangeTo);
+      @Param("teamId") Long teamId,
+      @Param("rangeFrom") LocalDate rangeFrom,
+      @Param("rangeTo") LocalDate rangeTo);
 
-  // Find all unpublished/generated schedules for a team that overlap a date
-  // range.
-  // In this project, published=false means generated but not published yet.
+  /**
+   * All unpublished/draft schedules for a team overlapping [rangeFrom, rangeTo].
+   */
   @Query("""
           select s from Schedule s
           join fetch s.team t
@@ -46,8 +49,10 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
       LocalDate rangeFrom,
       LocalDate rangeTo);
 
-  // Find all published schedules across all teams in a company that overlap a
-  // date range.
+  /**
+   * All published schedules across all teams in a company overlapping [rangeFrom,
+   * rangeTo].
+   */
   @Query("""
           select s from Schedule s
           join fetch s.team t
@@ -62,4 +67,37 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
       Long companyId,
       LocalDate rangeFrom,
       LocalDate rangeTo);
+
+  /** Fetch schedules by IDs with their full team/office/company graph. */
+  @Query("""
+          select distinct s
+          from Schedule s
+          join fetch s.team t
+          join fetch s.office o
+          join fetch t.company tc
+          join fetch o.company oc
+          where s.id in :ids
+      """)
+  List<Schedule> findWithTeamOfficeCompanyByIdIn(@Param("ids") List<Long> ids);
+
+  // ── New query ─────────────────────────────────────────────────────────────
+
+  /**
+   * Returns every unpublished (draft) schedule that belongs to the given
+   * company, ordered by team name then start date.
+   *
+   * Used by:
+   * GET /api/schedules/unpublished – list + fairness review
+   * DELETE /api/schedules/unpublished – bulk-clear before new generation
+   */
+  @Query("""
+          select s from Schedule s
+          join fetch s.team t
+          join fetch s.office o
+          join fetch t.company tc
+          where tc.id = :companyId
+            and s.published = false
+          order by t.name asc, s.startDate asc
+      """)
+  List<Schedule> findAllUnpublishedByCompanyId(@Param("companyId") Long companyId);
 }

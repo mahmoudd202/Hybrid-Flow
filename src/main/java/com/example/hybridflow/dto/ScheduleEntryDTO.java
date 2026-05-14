@@ -8,10 +8,6 @@ import java.time.LocalDate;
 
 import com.example.hybridflow.entity.WorkMode;
 
-/**
- * A single day-cell in the schedule grid.
- * Tells the frontend: "on this date, this user works in this mode."
- */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

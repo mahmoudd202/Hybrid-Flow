@@ -5,16 +5,21 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
 import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ScheduleConflictCheckRequestDTO {
+public class GeneratedTeamScheduleDTO {
+
+    private Long scheduleId;
+
+    private Long teamId;
+    private String teamName;
+
     private Long officeId;
-    private List<Long> teamIds;
-    private LocalDate startDate;
-    private LocalDate endDate;
+    private String officeName;
+
+    private List<GeneratedScheduleEntryDTO> entries;
 }

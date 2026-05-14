@@ -20,7 +20,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     // Find all employees in a team
     // List<User> findByTeamId(Long teamId);
-    
+
     List<User> findByTeamIdIn(List<Long> teamIds);
 
     List<User> findAllByTeamId(Long teamId);
@@ -35,4 +35,24 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 where u.email = :email
             """)
     Optional<User> findAuthContextByEmail(@Param("email") String email);
+
+    @Query("""
+                select count(u)
+                from User u
+                where u.team.id = :teamId
+                  and u.enabled = true
+                  and u.role in (com.example.hybridflow.entity.Role.EMPLOYEE, com.example.hybridflow.entity.Role.MANAGER)
+            """)
+    int countSchedulableUsersByTeamId(@Param("teamId") Long teamId);
+
+    @Query("""
+                select u
+                from User u
+                join fetch u.team t
+                where t.id in :teamIds
+                  and u.enabled = true
+                  and u.role in (com.example.hybridflow.entity.Role.EMPLOYEE, com.example.hybridflow.entity.Role.MANAGER)
+                order by t.id asc, u.id asc
+            """)
+    List<User> findSchedulableUsersByTeamIds(@Param("teamIds") List<Long> teamIds);
 }

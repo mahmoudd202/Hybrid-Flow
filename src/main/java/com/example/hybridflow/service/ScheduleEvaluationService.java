@@ -25,6 +25,11 @@ public class ScheduleEvaluationService {
     private final PlanningPolicyRepository planningPolicyRepository;
     private final PreferredWorkDayRepository preferredWorkDayRepository;
 
+    // ── Existing method (used by ScheduleGenerationService) ──────────────────
+
+    /**
+     * Full evaluation using a known PlanningPolicy (called right after generation).
+     */
     public EvaluationResult evaluateSchedules(List<Long> scheduleIds, List<User> users, List<Team> teams,
             PlanningPolicy policy, LocalDate startDate, LocalDate endDate) {
         Map<Long, List<ScheduleEntry>> userScheduleEntries = new HashMap<>();
@@ -42,6 +47,42 @@ public class ScheduleEvaluationService {
 
         return new EvaluationResult(overallScore, teamScores, individualScores);
     }
+
+    // ── New method (used by ScheduleManagementService for unpublished review) ─
+
+    /**
+     * Evaluate unpublished schedules without a PlanningPolicy context.
+     *
+     * Because the Schedule entity does not store the policy that was used for
+     * generation, we fall back to the most-recently-created policy of the team's
+     * company. If no policy exists we use a permissive default (min=0, max=5).
+     *
+     * This gives HR a meaningful fairness preview even when reviewing drafts
+     * that were generated in a previous session.
+     */
+    public EvaluationResult evaluateForUnpublished(
+            List<Long> scheduleIds,
+            List<User> users,
+            List<Team> teams,
+            LocalDate startDate,
+            LocalDate endDate) {
+
+        if (teams.isEmpty() || users.isEmpty()) {
+            return new EvaluationResult(0.0, List.of(), List.of());
+        }
+
+        // Best-effort: grab the latest policy from the company owning the first team
+        Long companyId = teams.get(0).getCompany().getId();
+        PlanningPolicy policy = planningPolicyRepository
+                .findByCompanyIdOrderByCreatedAtDesc(companyId)
+                .stream()
+                .findFirst()
+                .orElseGet(() -> buildPermissiveDefaultPolicy(companyId));
+
+        return evaluateSchedules(scheduleIds, users, teams, policy, startDate, endDate);
+    }
+
+    // ── Internal helpers (unchanged from original) ────────────────────────────
 
     private List<IndividualFairnessDTO> calculateIndividualFairness(List<User> users,
             Map<Long, List<ScheduleEntry>> userScheduleEntries, PlanningPolicy policy, LocalDate startDate,
@@ -184,6 +225,23 @@ public class ScheduleEvaluationService {
 
         return Math.round(overallScore * 100.0) / 100.0;
     }
+
+    /**
+     * Creates a lenient default policy used when no real policy exists.
+     * It never blocks the scoring calculation (min=0, max=5).
+     */
+    private PlanningPolicy buildPermissiveDefaultPolicy(Long companyId) {
+        PlanningPolicy p = new PlanningPolicy();
+        p.setWorkingDaysPerWeek(5);
+        p.setMinOfficeDaysPerWeek(0);
+        p.setMaxOfficeDaysPerWeek(5);
+        p.setMaxConsecutiveOfficeDays(5);
+        p.setMinTeamSharedDays(0);
+        p.setCoPresenceThresholdPercentagePerDay(0);
+        return p;
+    }
+
+    // ── Result record ─────────────────────────────────────────────────────────
 
     @Data
     @AllArgsConstructor

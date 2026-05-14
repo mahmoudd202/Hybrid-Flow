@@ -12,9 +12,12 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ScheduleConflictCheckRequestDTO {
+public class AvailableScheduleTeamsResponseDTO {
+
     private Long officeId;
-    private List<Long> teamIds;
     private LocalDate startDate;
     private LocalDate endDate;
+
+    private List<AvailableScheduleTeamDTO> availableTeams;
+    private List<UnavailableScheduleTeamDTO> unavailableTeams;
 }

@@ -9,8 +9,6 @@ import com.example.hybridflow.entity.Meeting;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
-import com.example.hybridflow.entity.MeetingType;
 
 @Repository
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
