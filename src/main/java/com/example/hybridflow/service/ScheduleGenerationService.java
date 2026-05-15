@@ -355,7 +355,7 @@ public class ScheduleGenerationService {
 
             /*
              * Objective:
-             * Maximize preferred work-day satisfaction.
+             * Maximize preferred Online-day satisfaction.
              */
             GRBLinExpr objective = new GRBLinExpr();
 
@@ -369,7 +369,7 @@ public class ScheduleGenerationService {
                 for (LocalDate date : workDates) {
                     if (preferredDays.contains(date.getDayOfWeek())) {
                         objective.addTerm(
-                                1.0,
+                                -1.0,
                                 x.get(variableKey(user.getId(), date)));
                     }
                 }

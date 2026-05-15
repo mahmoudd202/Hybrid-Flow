@@ -114,15 +114,23 @@ public class ScheduleEvaluationService {
             breakdown.put("officeDayBalance", String.format("%.2f", officeDayBalanceScore));
 
             // 2. Preferred Work Days Satisfaction
-            Set<DayOfWeek> preferredDays = preferredWorkDayRepository.findByUserId(user.getId()).stream()
+            Set<DayOfWeek> preferredOnlineDays = preferredWorkDayRepository.findByUserId(user.getId()).stream()
                     .map(PreferredWorkDay::getDayOfWeek)
                     .collect(Collectors.toSet());
-            long satisfiedPreferredDays = entries.stream()
-                    .filter(e -> e.getWorkMode() == WorkMode.OFFICE
-                            && preferredDays.contains(e.getDate().getDayOfWeek()))
+
+            long totalPreferredDaysInSchedule = entries.stream()
+                    .filter(e -> preferredOnlineDays.contains(e.getDate().getDayOfWeek()))
                     .count();
-            double preferenceSatisfactionScore = preferredDays.isEmpty() ? 1.0
-                    : (double) satisfiedPreferredDays / preferredDays.size();
+
+            long satisfiedPreferredDays = entries.stream()
+                    .filter(e -> e.getWorkMode() == WorkMode.ONLINE
+                            && preferredOnlineDays.contains(e.getDate().getDayOfWeek()))
+                    .count();
+
+            double preferenceSatisfactionScore = (preferredOnlineDays.isEmpty() || totalPreferredDaysInSchedule == 0)
+                    ? 1.0
+                    : (double) satisfiedPreferredDays / totalPreferredDaysInSchedule;
+
             breakdown.put("preferenceSatisfaction", String.format("%.2f", preferenceSatisfactionScore));
 
             // 3. Weekly Distribution Balance
