@@ -199,7 +199,7 @@ public class HybridFlowApplication {
             System.out.println(">>> Office: Main HQ - New York");
             System.out.println(">>> Teams: Backend Devs, UI/UX Design");
             System.out.println(">>> Users:");
-            System.out.println("    HR: hr@techflow.com / password123");
+            System.out.println("    HR:  hr@techflow.com/ password123");
             System.out.println("    Manager A: manager.a@techflow.com / password123");
             System.out.println("    Manager B: manager.b@techflow.com / password123");
             System.out.println("    Employees: dev1@techflow.com, dev2@techflow.com, designer1@techflow.com, designer2@techflow.com / password123");
