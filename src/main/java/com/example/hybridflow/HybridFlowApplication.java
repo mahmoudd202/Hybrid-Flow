@@ -1,17 +1,32 @@
 package com.example.hybridflow;
 
 import com.example.hybridflow.entity.Company;
+import com.example.hybridflow.entity.Meeting;
+import com.example.hybridflow.entity.MeetingType;
 import com.example.hybridflow.entity.Office;
+import com.example.hybridflow.entity.PlanningPolicy;
+import com.example.hybridflow.entity.Request;
+import com.example.hybridflow.entity.RequestStatus;
+import com.example.hybridflow.entity.RequestType;
 import com.example.hybridflow.entity.Role;
 import com.example.hybridflow.entity.Schedule;
 import com.example.hybridflow.entity.ScheduleEntry;
+import com.example.hybridflow.entity.Task;
+import com.example.hybridflow.entity.TaskAssignment;
+import com.example.hybridflow.entity.TaskAssignmentStatus;
+import com.example.hybridflow.entity.TaskTargetType;
 import com.example.hybridflow.entity.Team;
 import com.example.hybridflow.entity.User;
 import com.example.hybridflow.entity.WorkMode;
 import com.example.hybridflow.repository.CompanyRepository;
+import com.example.hybridflow.repository.MeetingRepository;
 import com.example.hybridflow.repository.OfficeRepository;
+import com.example.hybridflow.repository.PlanningPolicyRepository;
+import com.example.hybridflow.repository.RequestRepository;
 import com.example.hybridflow.repository.ScheduleEntryRepository;
 import com.example.hybridflow.repository.ScheduleRepository;
+import com.example.hybridflow.repository.TaskAssignmentRepository;
+import com.example.hybridflow.repository.TaskRepository;
 import com.example.hybridflow.repository.TeamRepository;
 import com.example.hybridflow.repository.UserRepository;
 
@@ -24,6 +39,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Random;
 
@@ -43,6 +59,11 @@ public class HybridFlowApplication {
             OfficeRepository officeRepository,
             ScheduleRepository scheduleRepository,
             ScheduleEntryRepository scheduleEntryRepository,
+            PlanningPolicyRepository planningPolicyRepository,
+            TaskRepository taskRepository,
+            TaskAssignmentRepository taskAssignmentRepository,
+            MeetingRepository meetingRepository,
+            RequestRepository requestRepository,
             PasswordEncoder passwordEncoder
     ) {
         return args -> {
@@ -194,12 +215,67 @@ public class HybridFlowApplication {
                     random
             );
 
+            // 9. Planning policy — HR policy list must never be blank on first login
+            PlanningPolicy policy = new PlanningPolicy();
+            policy.setCompany(company);
+            policy.setName("Standard Hybrid Policy");
+            policy.setWorkingDaysPerWeek(5);
+            policy.setMinOfficeDaysPerWeek(2);
+            policy.setMaxOfficeDaysPerWeek(3);
+            policy.setMaxConsecutiveOfficeDays(3);
+            policy.setMinTeamSharedDays(1);
+            policy.setCoPresenceThresholdPercentagePerDay(50);
+            planningPolicyRepository.save(policy);
+
+            // 10. Task assigned to dev1 — Employee task list and Manager assignments
+            //     modal must never be blank on first login
+            Task task = new Task();
+            task.setTitle("Set up CI/CD pipeline");
+            task.setDescription("Configure GitHub Actions for automated build and deployment.");
+            task.setDueDate(LocalDateTime.now().plusDays(7));
+            task.setTargetType(TaskTargetType.INDIVIDUAL);
+            task.setCreatedBy(managerA);
+            task.setCompany(company);
+            task.setTeam(teamA);
+            task = taskRepository.save(task);
+
+            TaskAssignment assignment = new TaskAssignment();
+            assignment.setTask(task);
+            assignment.setAssignee(dev1);
+            assignment.setStatus(TaskAssignmentStatus.TODO);
+            assignment.setAssignedAt(LocalDateTime.now());
+            taskAssignmentRepository.save(assignment);
+
+            // 11. Meeting for Backend Devs — Manager and Employee meeting lists
+            //     must never be blank on first login
+            Meeting meeting = new Meeting();
+            meeting.setTitle("Sprint Planning");
+            meeting.setStartTime(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0));
+            meeting.setEndTime(LocalDateTime.now().plusDays(1).withHour(11).withMinute(0).withSecond(0).withNano(0));
+            meeting.setHost(managerA);
+            meeting.setOffice(office);
+            meeting.setType(MeetingType.OFFICE);
+            meeting.setParticipatingTeams(List.of(teamA));
+            meetingRepository.save(meeting);
+
+            // 12. Pending WFH request from dev1 — HR pending requests list
+            //     must never be blank on first login
+            Request wfhRequest = new Request();
+            wfhRequest.setRequester(dev1);
+            wfhRequest.setCompany(company);
+            wfhRequest.setType(RequestType.WFH);
+            wfhRequest.setStatus(RequestStatus.PENDING);
+            wfhRequest.setStartDate(LocalDate.now().plusDays(3));
+            wfhRequest.setEndDate(LocalDate.now().plusDays(3));
+            wfhRequest.setReason("Doctor appointment in the morning, working from home in the afternoon.");
+            requestRepository.save(wfhRequest);
+
             System.out.println(">>> Database seeded successfully.");
             System.out.println(">>> Company: TechFlow Corp");
             System.out.println(">>> Office: Main HQ - New York");
             System.out.println(">>> Teams: Backend Devs, UI/UX Design");
             System.out.println(">>> Users:");
-            System.out.println("    HR:  hr@techflow.com/ password123");
+            System.out.println("    HR: hr@techflow.com / password123");
             System.out.println("    Manager A: manager.a@techflow.com / password123");
             System.out.println("    Manager B: manager.b@techflow.com / password123");
             System.out.println("    Employees: dev1@techflow.com, dev2@techflow.com, designer1@techflow.com, designer2@techflow.com / password123");
