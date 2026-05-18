@@ -22,17 +22,14 @@ public class InvitationService {
 
     private final InvitationRepository invitationRepository;
     private final EmailService emailService;
-    private final OtpService otpService;
     private final UserRepository userRepository;
 
     public InvitationService(
             InvitationRepository invitationRepository,
             EmailService emailService,
-            OtpService otpService,
             UserRepository userRepository) {
         this.invitationRepository = invitationRepository;
         this.emailService = emailService;
-        this.otpService = otpService;
         this.userRepository = userRepository;
     }
 
@@ -50,18 +47,15 @@ public class InvitationService {
             throw new BusinessValidationException("Team '" + team.getName() + "' already has a designated manager.");
         }
 
-        String token = otpService.generateOtp();
-
         Invitation invitation = new Invitation();
         invitation.setEmail(email);
-        invitation.setToken(token);
         invitation.setRole(role);
         invitation.setTeam(team);
         invitation.setCompany(company);
         invitation.setExpiryDate(Instant.now().plusSeconds(86400)); // 24 hours
 
         invitationRepository.save(invitation);
-        emailService.sendInvitationEmail(email, token, role.name());
+        emailService.sendInvitationEmail(email, role.name());
     }
 
     @Transactional(readOnly = true)
@@ -73,18 +67,11 @@ public class InvitationService {
 
         List<Invitation> pendingInvitations = invitationRepository.findByCompanyIdAndUsedFalseAndExpiryDateAfter(
                 company.getId(),
-                Instant.now()
-        );
+                Instant.now());
 
         return pendingInvitations.stream()
                 .map(this::toResponseDTO)
                 .collect(Collectors.toList());
-    }
-
-    public Invitation validateToken(String token) {
-        return invitationRepository.findByTokenAndUsedFalse(token)
-                .filter(inv -> inv.getExpiryDate().isAfter(Instant.now()))
-                .orElseThrow(() -> new BusinessValidationException("Invalid or expired invitation code."));
     }
 
     public void markAsUsed(Invitation invitation) {

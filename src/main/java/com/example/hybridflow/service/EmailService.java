@@ -19,21 +19,29 @@ public class EmailService {
         message.setSubject("Verify your account");
         message.setText(
                 "Your verification code is: " + otp +
-                        "\nThis code expires in 10 minutes."
-        );
+                        "\nThis code expires in 10 minutes.");
         mailSender.send(message);
     }
 
-    public void sendInvitationEmail(String to, String token, String role) {
+    public void sendInvitationEmail(String to, String role) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
         message.setSubject("Invitation to join the Hybrid Work System");
         message.setText(
                 "You have been invited as a " + role + ".\n\n" +
-                        "Please go to the registration page and enter your Invitation Code:\n" +
-                        "CODE: " + token + "\n\n" +
-                        "This code will expire in 24 hours."
-        );
+                        "Please go to the system and sign in with your email to complete your registration.\n" +
+                        "An OTP will be sent to you during the sign-in process for verification.");
+        mailSender.send(message);
+    }
+
+    public void sendForgotPasswordEmail(String to, String otp) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(to);
+        message.setSubject("Password Reset Request");
+        message.setText(
+                "You requested a password reset.\n" +
+                        "Your verification code is: " + otp + "\n" +
+                        "This code expires in 10 minutes.");
         mailSender.send(message);
     }
 }

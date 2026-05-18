@@ -22,7 +22,6 @@ public class CsvService {
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
-    // Maximum allowed file size for CSV uploads (5 MB)
     private static final long MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
     private final TeamRepository teamRepository;
@@ -35,14 +34,11 @@ public class CsvService {
 
     @Transactional
     public CsvUploadResponse parseCsvFile(MultipartFile file, User hrUser) {
-
         Company hrCompany = hrUser.getCompany();
-
         if (hrCompany == null) {
             return new CsvUploadResponse(false, "HR user has no associated company.", 0, 0, 0, 0, null);
         }
 
-        // Basic file validation
         if (file.isEmpty()) {
             return new CsvUploadResponse(false, "Uploaded file is empty.", 0, 0, 0, 0, null);
         }
@@ -51,10 +47,8 @@ public class CsvService {
             return new CsvUploadResponse(false, "Only .csv files are accepted.", 0, 0, 0, 0, null);
         }
 
-        // File size check
         if (file.getSize() > MAX_FILE_SIZE_BYTES) {
-            return new CsvUploadResponse(false,
-                    "File too large. Maximum allowed size is 5 MB.", 0, 0, 0, 0, null);
+            return new CsvUploadResponse(false, "File too large. Maximum allowed size is 5 MB.", 0, 0, 0, 0, null);
         }
 
         List<CsvRowDto> rows = new ArrayList<>();
@@ -63,7 +57,6 @@ public class CsvService {
         try (Reader reader = new InputStreamReader(file.getInputStream());
                 CSVReader csvReader = new CSVReaderBuilder(reader).build()) {
 
-            // Read the first line to check for a header
             String[] firstLine = csvReader.readNext();
             if (firstLine == null) {
                 return new CsvUploadResponse(false, "CSV file contains no data.", 0, 0, 0, 0, null);
@@ -71,11 +64,8 @@ public class CsvService {
 
             boolean hasHeader = isHeaderRow(firstLine);
             int rowNumber = 1;
-
-            // Cache by team name (lowercased) — scoped to this company already via the DB lookup
             Map<String, Team> teamCache = new HashMap<>();
 
-            // If the first line is NOT a header, process it as data
             if (!hasHeader) {
                 CsvRowDto rowDto = processLine(firstLine, rowNumber, hrCompany, teamCache);
                 rows.add(rowDto);
@@ -88,12 +78,9 @@ public class CsvService {
                 }
             }
 
-            // Stream remaining lines one at a time (memory-efficient)
             String[] line;
             while ((line = csvReader.readNext()) != null) {
                 rowNumber++;
-
-                // Skip blank lines
                 if (line.length == 0 || (line.length == 1 && line[0].trim().isEmpty()))
                     continue;
 
@@ -108,8 +95,7 @@ public class CsvService {
                 }
             }
 
-            String message = String.format(
-                    "Parsed %d rows: %d valid, %d invalid, %d saved.",
+            String message = String.format("Parsed %d rows: %d valid, %d invalid, %d saved.",
                     rows.size(), validCount, invalidCount, savedCount);
             return new CsvUploadResponse(true, message, rows.size(), validCount, invalidCount, savedCount, rows);
 
@@ -118,8 +104,7 @@ public class CsvService {
         }
     }
 
-    private CsvRowDto processLine(String[] line, int rowNumber,
-            Company hrCompany, Map<String, Team> teamCache) {
+    private CsvRowDto processLine(String[] line, int rowNumber, Company hrCompany, Map<String, Team> teamCache) {
         CsvRowDto rowDto = new CsvRowDto();
         rowDto.setRowNumber(rowNumber);
 
@@ -133,11 +118,7 @@ public class CsvService {
         return rowDto;
     }
 
-    private void processRow(String[] line,
-            CsvRowDto rowDto,
-            Company hrCompany,
-            Map<String, Team> teamCache) {
-
+    private void processRow(String[] line, CsvRowDto rowDto, Company hrCompany, Map<String, Team> teamCache) {
         String email = line[0].trim();
         String roleStr = line[1].trim();
         String teamName = line[2].trim();
@@ -148,14 +129,12 @@ public class CsvService {
 
         List<String> errors = new ArrayList<>();
 
-        // Validate email
         if (email.isEmpty() || !EMAIL_PATTERN.matcher(email).matches()) {
             errors.add("Invalid email format");
         } else if (userRepository.existsByEmail(email)) {
             errors.add("Email already registered");
         }
 
-        // Validate role
         Role role = null;
         try {
             role = Role.valueOf(roleStr.toUpperCase());
@@ -163,7 +142,6 @@ public class CsvService {
             errors.add("Invalid role. Accepted: EMPLOYEE, MANAGER, HR");
         }
 
-        // Validate team name
         if (teamName.isEmpty()) {
             errors.add("Team name cannot be empty");
         }
@@ -174,37 +152,32 @@ public class CsvService {
                 String cacheKey = teamName.toLowerCase();
                 final Company company = hrCompany;
 
-                // Reuse existing team in this company, or create a new one 
                 Team team = teamCache.computeIfAbsent(cacheKey,
                         k -> teamRepository.findByNameAndCompanyId(teamName, company.getId())
                                 .orElseGet(() -> {
                                     Team newTeam = new Team();
                                     newTeam.setName(teamName);
-                                    newTeam.setCompany(company); // scoped to HR's company
-                                    // office is intentionally null — HR will assign it later
+                                    newTeam.setCompany(company);
                                     return teamRepository.save(newTeam);
                                 }));
 
-                // Create user — always pinned to HR's company
                 User newUser = new User();
                 newUser.setEmail(email);
                 newUser.setRole(role);
                 newUser.setTeam(team);
-                newUser.setCompany(hrCompany); // same company as the HR who uploaded
-                newUser.setEnabled(false); // must go through invite flow to activate
+                newUser.setCompany(hrCompany);
+                newUser.setEnabled(false); // Must register via /auth/register to set password and activate
                 newUser.setProvider(AuthProvider.LOCAL);
 
                 userRepository.save(newUser);
 
-                // If the user is a MANAGER, handle team assignment strictly
                 if (role == Role.MANAGER) {
                     if (team.getManager() == null) {
                         team.setManager(newUser);
                         teamRepository.save(team);
                     } else if (!team.getManager().getId().equals(newUser.getId())) {
-                        // If team already has a DIFFERENT manager, we don't overwrite.
-                        // We mark the row as valid (user created) but add a warning/error about the team manager
-                        rowDto.setErrorMessage("User created, but Team '" + teamName + "' already has a manager. Assignment skipped.");
+                        rowDto.setErrorMessage(
+                                "User created, but Team '" + teamName + "' already has a manager. Assignment skipped.");
                     }
                 }
 
