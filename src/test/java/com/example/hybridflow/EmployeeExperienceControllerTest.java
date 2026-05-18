@@ -8,11 +8,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 import com.example.hybridflow.entity.WorkMode;
@@ -36,7 +39,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * and manage WFH/PTO requests end-to-end.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@Transactional
 @ActiveProfiles("test")
+// @WithMockUser(username = "dev1", roles = {"EMPLOYEE"})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class EmployeeExperienceControllerTest {
 
     @Autowired WebApplicationContext webApplicationContext;
@@ -127,6 +133,7 @@ class EmployeeExperienceControllerTest {
     // -----------------------------------------------------------------------
 
     @Test
+    @WithMockUser(username = "dev1", roles = {"EMPLOYEE"})
     void getMyMeetingsReturnsSprintPlanning() throws Exception {
         MvcResult result = mockMvc.perform(get("/api/meetings/my-schedule")
                         .header("Authorization", "Bearer " + employeeToken))
