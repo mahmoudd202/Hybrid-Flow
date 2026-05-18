@@ -3,6 +3,8 @@ package com.example.hybridflow.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.example.hybridflow.entity.AuthProvider;
+import com.example.hybridflow.entity.Role;
+import com.example.hybridflow.entity.Team;
 import com.example.hybridflow.entity.User;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +15,8 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
 
         Optional<User> findByEmail(String email);
+
+        Optional<User> findByTeamAndRole(Team team, Role role);
 
         @Query("""
                             select u from User u

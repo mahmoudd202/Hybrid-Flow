@@ -73,7 +73,8 @@ public class CsvService {
                 rows.add(rowDto);
                 if (rowDto.isValid()) {
                     validCount++;
-                    if (rowDto.isSaved()) savedCount++;
+                    if (rowDto.isSaved())
+                        savedCount++;
                 } else {
                     invalidCount++;
                 }
@@ -82,13 +83,15 @@ public class CsvService {
             String[] line;
             while ((line = csvReader.readNext()) != null) {
                 rowNumber++;
-                if (line.length == 0 || (line.length == 1 && line[0].trim().isEmpty())) continue;
+                if (line.length == 0 || (line.length == 1 && line[0].trim().isEmpty()))
+                    continue;
 
                 CsvRowDto rowDto = processLine(line, rowNumber, hrCompany, teamCache);
                 rows.add(rowDto);
                 if (rowDto.isValid()) {
                     validCount++;
-                    if (rowDto.isSaved()) savedCount++;
+                    if (rowDto.isSaved())
+                        savedCount++;
                 } else {
                     invalidCount++;
                 }
@@ -117,7 +120,12 @@ public class CsvService {
         return rowDto;
     }
 
-    private void processRow(String[] line, CsvRowDto rowDto, Company hrCompany, Map<String, Team> teamCache) {
+    @Transactional
+    private void processRow(String[] line,
+            CsvRowDto rowDto,
+            Company hrCompany,
+            Map<String, Team> teamCache) {
+
         String email = line[0].trim();
         String roleStr = line[1].trim();
         String teamName = line[2].trim();
@@ -135,6 +143,7 @@ public class CsvService {
         }
 
         Role role = null;
+
         try {
             role = Role.valueOf(roleStr.toUpperCase());
         } catch (IllegalArgumentException e) {
@@ -145,58 +154,73 @@ public class CsvService {
             errors.add("Team name cannot be empty");
         }
 
-        if (errors.isEmpty()) {
-            rowDto.setValid(true);
-            try {
-                String cacheKey = teamName.toLowerCase();
-                final Company company = hrCompany;
-
-                Team team = teamCache.computeIfAbsent(cacheKey,
-                        k -> teamRepository.findByNameAndCompanyId(teamName, company.getId())
-                                .orElseGet(() -> {
-                                    Team newTeam = new Team();
-                                    newTeam.setName(teamName);
-                                    newTeam.setCompany(company);
-                                    return teamRepository.save(newTeam);
-                                }));
-
-                User newUser = new User();
-                newUser.setEmail(email);
-                newUser.setRole(role);
-                newUser.setTeam(team);
-                newUser.setCompany(hrCompany);
-                newUser.setEnabled(false); // Must register via /auth/register to set password and activate
-                newUser.setProvider(AuthProvider.LOCAL);
-
-                userRepository.save(newUser);
-
-                if (role == Role.MANAGER) {
-                    if (team.getManager() == null) {
-                        team.setManager(newUser);
-                        teamRepository.save(team);
-                    } else if (!team.getManager().getId().equals(newUser.getId())) {
-                        rowDto.setErrorMessage("User created, but Team '" + teamName + "' already has a manager. Assignment skipped.");
-                    }
-                }
-
-                // Send invitation email to the newly created user
-                //this may make the user uploading process take a bit longer time, decide later
-                emailService.sendInvitationEmail(email, role.name());  
-
-                rowDto.setSaved(true);
-
-            } catch (Exception e) {
-                rowDto.setValid(false);
-                rowDto.setErrorMessage("Save error: " + e.getMessage());
-            }
-        } else {
+        if (!errors.isEmpty()) {
             rowDto.setValid(false);
             rowDto.setErrorMessage(String.join("; ", errors));
+            return;
+        }
+
+        rowDto.setValid(true);
+
+        try {
+
+            String cacheKey = teamName.toLowerCase();
+            final Company company = hrCompany;
+
+            Team team = teamCache.computeIfAbsent(
+                    cacheKey,
+                    k -> teamRepository.findByNameAndCompanyId(teamName, company.getId())
+                            .orElseGet(() -> {
+                                Team newTeam = new Team();
+                                newTeam.setName(teamName);
+                                newTeam.setCompany(company);
+                                return teamRepository.save(newTeam);
+                            }));
+
+            User newUser = new User();
+            newUser.setEmail(email);
+            newUser.setRole(role);
+            newUser.setTeam(team);
+            newUser.setCompany(hrCompany);
+            newUser.setEnabled(false);
+            newUser.setProvider(AuthProvider.LOCAL);
+
+            if (role == Role.MANAGER) {
+
+                User oldManager = userRepository
+                        .findByTeamAndRole(team, Role.MANAGER)
+                        .orElse(null);
+
+                // Demote old manager if exists
+                if (oldManager != null) {
+                    oldManager.setRole(Role.EMPLOYEE);
+                    userRepository.save(oldManager);
+                }
+            }
+            userRepository.save(newUser);
+
+            if (role == Role.MANAGER) {
+                team.setManager(newUser);
+                teamRepository.save(team);
+            }
+
+           rowDto.setSaved(true);
+
+            // This may slow bulk uploads for large CSVs.
+            // Consider async processing later.
+            emailService.sendInvitationEmail(email, role.name());
+
+        } catch (Exception e) {
+
+            rowDto.setValid(false);
+            rowDto.setSaved(false);
+            rowDto.setErrorMessage("Save error: " + e.getMessage());
         }
     }
 
     private boolean isHeaderRow(String[] row) {
-        if (row.length < 1) return false;
+        if (row.length < 1)
+            return false;
         String first = row[0].trim().toLowerCase();
         return first.equals("email") || first.equals("e-mail") || first.equals("mail");
     }
