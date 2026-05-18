@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.temporal.WeekFields;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -82,38 +83,75 @@ public class ScheduleEvaluationService {
         return evaluateSchedules(scheduleIds, users, teams, policy, startDate, endDate);
     }
 
-    // ── Internal helpers (unchanged from original) ────────────────────────────
+    // ── Internal helpers ──────────────────────────────────────────────────────
 
     private List<IndividualFairnessDTO> calculateIndividualFairness(List<User> users,
             Map<Long, List<ScheduleEntry>> userScheduleEntries, PlanningPolicy policy, LocalDate startDate,
             LocalDate endDate) {
+
         List<IndividualFairnessDTO> scores = new ArrayList<>();
+
+        // Group all work dates by ISO week so we can evaluate balance per week.
+        WeekFields iso = WeekFields.ISO;
+        Map<String, List<LocalDate>> allDatesByWeek = buildDatesByWeek(startDate, endDate, iso);
+
         for (User user : users) {
             List<ScheduleEntry> entries = userScheduleEntries.getOrDefault(user.getId(), Collections.emptyList());
             Map<String, String> breakdown = new HashMap<>();
-            double score = 0.0;
 
-            // 1. Office/Online Day Balance & Difference from Target
+            // Index entries by date for fast lookup
+            Map<LocalDate, WorkMode> modeByDate = entries.stream()
+                    .collect(Collectors.toMap(ScheduleEntry::getDate, ScheduleEntry::getWorkMode));
+
             long officeDays = entries.stream().filter(e -> e.getWorkMode() == WorkMode.OFFICE).count();
             long totalWorkDays = entries.size();
 
+            // ── Fix 1: officeDayBalance evaluated per ISO week, then averaged ──────
+            //
+            // Previously, the balance check was done against the *total* office days
+            // across the whole period compared to min/max. That means a user perfectly
+            // hitting 2 days/week over 2 weeks (total=4) would be checked against a
+            // period-wide [min*weeks, max*weeks] band that was never explicitly derived,
+            // making the score sensitive to period length.
+            //
+            // Now: compute a 0-1 balance score for each ISO week in the schedule, then
+            // average them. A week where the user is squarely in [min, max] scores 1.0;
+            // above or below is penalised proportionally, clamped to 0.
             double officeDayBalanceScore = 0.0;
             if (totalWorkDays > 0) {
                 double targetMin = policy.getMinOfficeDaysPerWeek();
                 double targetMax = policy.getMaxOfficeDaysPerWeek();
 
-                if (officeDays >= targetMin && officeDays <= targetMax) {
-                    officeDayBalanceScore = 1.0;
-                } else if (officeDays < targetMin) {
-                    officeDayBalanceScore = 1.0 - (targetMin - officeDays) / targetMin;
-                } else {
-                    officeDayBalanceScore = 1.0 - (officeDays - targetMax) / targetMax;
+                List<Double> weeklyBalanceScores = new ArrayList<>();
+                for (List<LocalDate> weekDates : allDatesByWeek.values()) {
+                    // Only score weeks that have at least one work day in the schedule
+                    List<LocalDate> scheduledInWeek = weekDates.stream()
+                            .filter(modeByDate::containsKey)
+                            .collect(Collectors.toList());
+                    if (scheduledInWeek.isEmpty())
+                        continue;
+
+                    long weeklyOfficeDays = scheduledInWeek.stream()
+                            .filter(d -> modeByDate.get(d) == WorkMode.OFFICE)
+                            .count();
+
+                    double weekScore;
+                    if (weeklyOfficeDays >= targetMin && weeklyOfficeDays <= targetMax) {
+                        weekScore = 1.0;
+                    } else if (weeklyOfficeDays < targetMin) {
+                        weekScore = targetMin == 0 ? 1.0 : 1.0 - (targetMin - weeklyOfficeDays) / targetMin;
+                    } else {
+                        weekScore = targetMax == 0 ? 0.0 : 1.0 - (weeklyOfficeDays - targetMax) / targetMax;
+                    }
+                    weeklyBalanceScores.add(Math.max(0.0, weekScore));
                 }
-                officeDayBalanceScore = Math.max(0, officeDayBalanceScore);
+
+                officeDayBalanceScore = weeklyBalanceScores.isEmpty() ? 0.0
+                        : weeklyBalanceScores.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
             }
             breakdown.put("officeDayBalance", String.format("%.2f", officeDayBalanceScore));
 
-            // 2. Preferred Work Days Satisfaction
+            // ── Preferred Work Days Satisfaction (unchanged) ──────────────────────
             Set<DayOfWeek> preferredOnlineDays = preferredWorkDayRepository.findByUserId(user.getId()).stream()
                     .map(PreferredWorkDay::getDayOfWeek)
                     .collect(Collectors.toSet());
@@ -133,22 +171,40 @@ public class ScheduleEvaluationService {
 
             breakdown.put("preferenceSatisfaction", String.format("%.2f", preferenceSatisfactionScore));
 
-            // 3. Weekly Distribution Balance
+            // ── Fix 2: distributionBalance uses work-day span, not calendar-day span ─
+            //
+            // Previously: span = lastOfficeEpochDay - firstOfficeEpochDay + 1
+            // This includes weekends, inflating the denominator. A user with 4 perfectly
+            // spread office days over 2 calendar weeks got span≈12 → score≈0.33, even
+            // though the distribution was perfectly even.
+            //
+            // Now: count only the weekdays (Mon–Fri) that fall between the first and last
+            // office day (inclusive). This removes the weekend-inflation bias and correctly
+            // rewards schedules where office days are spread evenly across work days.
             double distributionBalanceScore = 1.0;
             if (totalWorkDays > 0 && officeDays > 0) {
-                long minDay = entries.stream().filter(e -> e.getWorkMode() == WorkMode.OFFICE)
-                        .map(ScheduleEntry::getDate).mapToLong(d -> d.toEpochDay()).min().orElse(0);
-                long maxDay = entries.stream().filter(e -> e.getWorkMode() == WorkMode.OFFICE)
-                        .map(ScheduleEntry::getDate).mapToLong(d -> d.toEpochDay()).max().orElse(0);
-                long span = maxDay - minDay + 1;
-                if (span > 0) {
-                    distributionBalanceScore = (double) officeDays / span;
+                List<LocalDate> officeDatesSorted = entries.stream()
+                        .filter(e -> e.getWorkMode() == WorkMode.OFFICE)
+                        .map(ScheduleEntry::getDate)
+                        .sorted()
+                        .collect(Collectors.toList());
+
+                LocalDate firstOfficeDate = officeDatesSorted.get(0);
+                LocalDate lastOfficeDate = officeDatesSorted.get(officeDatesSorted.size() - 1);
+
+                // Count weekdays between first and last office day (inclusive)
+                long workDaySpan = countWeekdays(firstOfficeDate, lastOfficeDate);
+
+                if (workDaySpan > 0) {
+                    distributionBalanceScore = (double) officeDays / workDaySpan;
                 }
             }
+            // Cap at 1.0: a dense back-to-back cluster can have officeDays == workDaySpan
+            distributionBalanceScore = Math.min(1.0, Math.max(0.0, distributionBalanceScore));
             breakdown.put("distributionBalance", String.format("%.2f", distributionBalanceScore));
 
-            score = (officeDayBalanceScore * 0.4 + preferenceSatisfactionScore * 0.4 + distributionBalanceScore * 0.2)
-                    * 100;
+            double score = (officeDayBalanceScore * 0.4 + preferenceSatisfactionScore * 0.4
+                    + distributionBalanceScore * 0.2) * 100;
             score = Math.max(0, Math.min(100, score));
 
             scores.add(IndividualFairnessDTO.builder()
@@ -159,6 +215,43 @@ public class ScheduleEvaluationService {
                     .build());
         }
         return scores;
+    }
+
+    /**
+     * Counts the number of weekdays (Monday through Friday) in the inclusive range
+     * [from, to]. Returns 1 when from == to and the day is a weekday.
+     */
+    private long countWeekdays(LocalDate from, LocalDate to) {
+        if (from.isAfter(to))
+            return 0;
+        long count = 0;
+        LocalDate cursor = from;
+        while (!cursor.isAfter(to)) {
+            DayOfWeek dow = cursor.getDayOfWeek();
+            if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY) {
+                count++;
+            }
+            cursor = cursor.plusDays(1);
+        }
+        return count;
+    }
+
+    /**
+     * Builds a map of ISO-week key → list of weekdays in [startDate, endDate].
+     * Used to evaluate officeDayBalance per week.
+     */
+    private Map<String, List<LocalDate>> buildDatesByWeek(LocalDate startDate, LocalDate endDate, WeekFields iso) {
+        Map<String, List<LocalDate>> result = new LinkedHashMap<>();
+        LocalDate cursor = startDate;
+        while (!cursor.isAfter(endDate)) {
+            DayOfWeek dow = cursor.getDayOfWeek();
+            if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY) {
+                String weekKey = cursor.get(iso.weekBasedYear()) + "-W" + cursor.get(iso.weekOfWeekBasedYear());
+                result.computeIfAbsent(weekKey, k -> new ArrayList<>()).add(cursor);
+            }
+            cursor = cursor.plusDays(1);
+        }
+        return result;
     }
 
     private List<TeamFairnessDTO> calculateTeamFairness(List<Team> teams,
