@@ -35,7 +35,7 @@ public class TeamController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
     @GetMapping("/office/{officeId}")
-    @PreAuthorize("hasRole('HR')")
+    @PreAuthorize("hasAnyRole('HR', 'MANAGER')")
     public ResponseEntity<List<TeamResponseDTO>> getTeamsByOffice(
             @PathVariable Long officeId,
             @AuthenticationPrincipal CustomUserDetails userDetails
