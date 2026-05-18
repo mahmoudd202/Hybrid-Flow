@@ -14,6 +14,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
         Optional<User> findByEmail(String email);
 
+        @Query("""
+                            select u from User u
+                            left join fetch u.company
+                            where u.email in :emails
+                        """)
+        List<User> findByEmailInWithCompany(@Param("emails") java.util.Collection<String> emails);
+
         Optional<User> findByProviderAndProviderId(
                         AuthProvider provider,
                         String providerId);

@@ -48,3 +48,5 @@ build/
 # --- EXTRA SYSTEM FILES ---
 .DS_Store
 Thumbs.db
+
+test_out.txt

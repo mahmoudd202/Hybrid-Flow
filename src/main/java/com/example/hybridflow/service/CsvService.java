@@ -26,10 +26,12 @@ public class CsvService {
 
     private final TeamRepository teamRepository;
     private final UserRepository userRepository;
+    private final EmailService emailService;
 
-    public CsvService(TeamRepository teamRepository, UserRepository userRepository) {
+    public CsvService(TeamRepository teamRepository, UserRepository userRepository, EmailService emailService) {
         this.teamRepository = teamRepository;
         this.userRepository = userRepository;
+        this.emailService = emailService;
     }
 
     @Transactional
@@ -71,8 +73,7 @@ public class CsvService {
                 rows.add(rowDto);
                 if (rowDto.isValid()) {
                     validCount++;
-                    if (rowDto.isSaved())
-                        savedCount++;
+                    if (rowDto.isSaved()) savedCount++;
                 } else {
                     invalidCount++;
                 }
@@ -81,15 +82,13 @@ public class CsvService {
             String[] line;
             while ((line = csvReader.readNext()) != null) {
                 rowNumber++;
-                if (line.length == 0 || (line.length == 1 && line[0].trim().isEmpty()))
-                    continue;
+                if (line.length == 0 || (line.length == 1 && line[0].trim().isEmpty())) continue;
 
                 CsvRowDto rowDto = processLine(line, rowNumber, hrCompany, teamCache);
                 rows.add(rowDto);
                 if (rowDto.isValid()) {
                     validCount++;
-                    if (rowDto.isSaved())
-                        savedCount++;
+                    if (rowDto.isSaved()) savedCount++;
                 } else {
                     invalidCount++;
                 }
@@ -176,10 +175,13 @@ public class CsvService {
                         team.setManager(newUser);
                         teamRepository.save(team);
                     } else if (!team.getManager().getId().equals(newUser.getId())) {
-                        rowDto.setErrorMessage(
-                                "User created, but Team '" + teamName + "' already has a manager. Assignment skipped.");
+                        rowDto.setErrorMessage("User created, but Team '" + teamName + "' already has a manager. Assignment skipped.");
                     }
                 }
+
+                // Send invitation email to the newly created user
+                //this may make the user uploading process take a bit longer time, decide later
+                emailService.sendInvitationEmail(email, role.name());  
 
                 rowDto.setSaved(true);
 
@@ -194,8 +196,7 @@ public class CsvService {
     }
 
     private boolean isHeaderRow(String[] row) {
-        if (row.length < 1)
-            return false;
+        if (row.length < 1) return false;
         String first = row[0].trim().toLowerCase();
         return first.equals("email") || first.equals("e-mail") || first.equals("mail");
     }
