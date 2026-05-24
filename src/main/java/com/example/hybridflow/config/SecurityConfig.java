@@ -80,7 +80,8 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList( // Allow your React/Vite dev server
                 "http://localhost:5173",
-                "http://localhost:3000"
+                "http://localhost:3000",
+                "http://127.0.0.1:5173"
         ));
         configuration.setAllowedMethods(Arrays.asList( // Allow the HTTP methods your controllers use (GET, POST, PATCH for status updates, etc.)
                 "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"

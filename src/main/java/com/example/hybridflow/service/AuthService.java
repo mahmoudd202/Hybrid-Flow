@@ -52,7 +52,21 @@ public class AuthService {
                     "Account not yet verified. Please check your email for the OTP.");
         }
 
-        return new AuthResponse(jwtService.generateToken(user));
+        UserProfile profile = profileRepository.findByUserId(user.getId()).orElse(null);
+
+        CurrentUserResponseDTO userDto = CurrentUserResponseDTO.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .companyId(user.getCompany() != null ? user.getCompany().getId() : null)
+                .companyName(user.getCompany() != null ? user.getCompany().getCompanyName() : null)
+                .teamId(user.getTeam() != null ? user.getTeam().getId() : null)
+                .teamName(user.getTeam() != null ? user.getTeam().getName() : null)
+                .firstName(profile != null ? profile.getFirstName() : null)
+                .lastName(profile != null ? profile.getLastName() : null)
+                .build();
+
+        return new AuthResponse(jwtService.generateToken(user), userDto);
     }
 
     @Transactional

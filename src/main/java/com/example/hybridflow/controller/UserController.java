@@ -1,5 +1,6 @@
 package com.example.hybridflow.controller;
 
+import com.example.hybridflow.dto.CurrentUserResponseDTO;
 import com.example.hybridflow.dto.EmployeeDetailsResponseDTO;
 import com.example.hybridflow.dto.MoveEmployeeRequestDTO;
 import com.example.hybridflow.dto.UpdateRoleRequestDTO;
@@ -94,5 +95,13 @@ public class UserController {
         EmployeeDetailsResponseDTO deactivatedEmployee = userService.deactivateEmployee(employeeId,
                 userDetails.getUser());
         return ResponseEntity.ok(deactivatedEmployee);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<CurrentUserResponseDTO> getCurrentUser(@AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+        return ResponseEntity.ok(userService.getMe(userDetails.getUser()));
     }
 }

@@ -1,5 +1,6 @@
 package com.example.hybridflow.service;
 
+import com.example.hybridflow.dto.CurrentUserResponseDTO;
 import com.example.hybridflow.dto.EmployeeDetailsResponseDTO;
 import com.example.hybridflow.entity.Role;
 import com.example.hybridflow.entity.Team;
@@ -188,6 +189,26 @@ public class UserService {
         UserProfile userProfile = userProfileRepository.findByUserId(employeeId).orElse(null);
 
         return toEmployeeDetailsResponseDTO(updatedUser, userProfile);
+    }
+
+    @Transactional(readOnly = true)
+    public CurrentUserResponseDTO getMe(User currentUser) {
+        User user = userRepository.findById(currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        UserProfile profile = userProfileRepository.findByUserId(user.getId()).orElse(null);
+        
+        return CurrentUserResponseDTO.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .companyId(user.getCompany() != null ? user.getCompany().getId() : null)
+                .companyName(user.getCompany() != null ? user.getCompany().getCompanyName() : null)
+                .teamId(user.getTeam() != null ? user.getTeam().getId() : null)
+                .teamName(user.getTeam() != null ? user.getTeam().getName() : null)
+                .firstName(profile != null ? profile.getFirstName() : null)
+                .lastName(profile != null ? profile.getLastName() : null)
+                .build();
     }
 
     private EmployeeDetailsResponseDTO toEmployeeDetailsResponseDTO(User employee, UserProfile userProfile) {
