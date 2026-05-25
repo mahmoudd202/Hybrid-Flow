@@ -17,13 +17,17 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.hybridflow.dto.InvitationRequestDTO;
 import com.example.hybridflow.dto.InvitationResponseDTO;
 import com.example.hybridflow.entity.Company;
+import com.example.hybridflow.entity.Invitation;
 import com.example.hybridflow.entity.Team;
+import com.example.hybridflow.entity.User;
 import com.example.hybridflow.exception.BusinessValidationException;
 import com.example.hybridflow.repository.TeamRepository;
 import com.example.hybridflow.security.CustomUserDetails;
 import com.example.hybridflow.service.InvitationService;
 
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
 @RestController
 @RequestMapping("/api/invitations")
@@ -60,7 +64,7 @@ public class InvitationController {
         }
 
         
-        invitationService.createAndSendInvitation(
+        Invitation invitation = invitationService.createAndSendInvitation(
                 dto.getEmail(),
                 dto.getRole(),
                 team,
@@ -68,12 +72,14 @@ public class InvitationController {
         );
 
         InvitationResponseDTO response = InvitationResponseDTO.builder()
+                .id(invitation.getId())
                 .email(dto.getEmail())
                 .role(dto.getRole())
                 .teamId(team.getId())
                 .teamName(team.getName())
                 .companyId(company.getId())
                 .companyName(company.getCompanyName())
+                .expiryDate(invitation.getExpiryDate())
                 .message("Invitation sent successfully.")
                 .build();
 
@@ -93,5 +99,42 @@ public class InvitationController {
         return ResponseEntity.ok(pendingInvitations);
     }
 
-    
+    @PostMapping("/{id}/resend")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<InvitationResponseDTO> resendInvitation(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        InvitationResponseDTO response = invitationService.resendInvitation(id, userDetails.getUser());
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<Void> cancelInvitation(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        invitationService.cancelInvitation(id, userDetails.getUser());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/expire")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<InvitationResponseDTO> expireInvitation(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        InvitationResponseDTO response = invitationService.expireInvitation(id, userDetails.getUser());
+        return ResponseEntity.ok(response);
+    }
 }

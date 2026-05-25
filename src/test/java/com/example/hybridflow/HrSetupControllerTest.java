@@ -13,8 +13,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.hybridflow.repository.OfficeRepository;
+import com.example.hybridflow.repository.TeamRepository;
 
 import java.util.Map;
 
@@ -32,6 +34,7 @@ class HrSetupControllerTest {
 
     @Autowired WebApplicationContext webApplicationContext;
     @Autowired OfficeRepository officeRepository;
+    @Autowired TeamRepository teamRepository;
 
     MockMvc mockMvc;
     final ObjectMapper objectMapper = new ObjectMapper();
@@ -163,5 +166,116 @@ class HrSetupControllerTest {
                         .header("Authorization", "Bearer " + hrToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    void officeCrudCycle() throws Exception {
+        String newOfficeBody = objectMapper.writeValueAsString(Map.of(
+                "name", "London Office",
+                "maxCapacity", 50
+        ));
+
+        // Create Office
+        MvcResult createResult = mockMvc.perform(post("/api/offices")
+                        .header("Authorization", "Bearer " + hrToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(newOfficeBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("London Office"))
+                .andExpect(jsonPath("$.maxCapacity").value(50))
+                .andReturn();
+
+        Long newOfficeId = objectMapper.readTree(
+                createResult.getResponse().getContentAsString()).get("id").asLong();
+
+        // Update Office
+        String updateOfficeBody = objectMapper.writeValueAsString(Map.of(
+                "name", "London HQ",
+                "maxCapacity", 100
+        ));
+
+        mockMvc.perform(put("/api/offices/" + newOfficeId)
+                        .header("Authorization", "Bearer " + hrToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateOfficeBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("London HQ"))
+                .andExpect(jsonPath("$.maxCapacity").value(100));
+
+        // Try deleting seeded office (has teams) -> should fail
+        mockMvc.perform(delete("/api/offices/" + seededOfficeId)
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().is4xxClientError());
+
+        // Delete newly created office -> should succeed
+        mockMvc.perform(delete("/api/offices/" + newOfficeId)
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void teamCrudCycle() throws Exception {
+        String newTeamBody = objectMapper.writeValueAsString(Map.of(
+                "name", "Quality Assurance",
+                "officeId", seededOfficeId
+        ));
+
+        // Create Team
+        MvcResult createResult = mockMvc.perform(post("/api/teams")
+                        .header("Authorization", "Bearer " + hrToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(newTeamBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Quality Assurance"))
+                .andExpect(jsonPath("$.officeId").value(seededOfficeId))
+                .andReturn();
+
+        Long newTeamId = objectMapper.readTree(
+                createResult.getResponse().getContentAsString()).get("id").asLong();
+
+        // Update Team
+        String updateTeamBody = objectMapper.writeValueAsString(Map.of(
+                "name", "QA & Testing",
+                "officeId", seededOfficeId
+        ));
+
+        mockMvc.perform(put("/api/teams/" + newTeamId)
+                        .header("Authorization", "Bearer " + hrToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateTeamBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("QA & Testing"));
+
+        // Try deleting seeded team (has employees) -> should fail
+        Long seededTeamId = teamRepository.findAll().get(0).getId();
+        mockMvc.perform(delete("/api/teams/" + seededTeamId)
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().is4xxClientError());
+
+        // Delete newly created team -> should succeed
+        mockMvc.perform(delete("/api/teams/" + newTeamId)
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void getTeamMembersReturnsMemberList() throws Exception {
+        Long seededTeamId = teamRepository.findAll().get(0).getId();
+
+        MvcResult result = mockMvc.perform(get("/api/teams/" + seededTeamId + "/members")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(response.isArray()).isTrue();
+        
+        // Assert some user fields are present
+        if (response.size() > 0) {
+            JsonNode firstMember = response.get(0);
+            assertThat(firstMember.has("id")).isTrue();
+            assertThat(firstMember.has("email")).isTrue();
+            assertThat(firstMember.has("role")).isTrue();
+        }
     }
 }

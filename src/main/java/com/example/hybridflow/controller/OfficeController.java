@@ -77,4 +77,33 @@ public class OfficeController {
         OfficeResponseDTO response = officeService.createOffice(dto, userDetails.getUser());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
+
+    @PutMapping("/{officeId}")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<OfficeResponseDTO> updateOffice(
+            @PathVariable Long officeId,
+            @Valid @RequestBody OfficeCreateRequestDTO dto,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        OfficeResponseDTO response = officeService.updateOffice(officeId, dto, userDetails.getUser());
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{officeId}")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<Void> deleteOffice(
+            @PathVariable Long officeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        officeService.deleteOffice(officeId, userDetails.getUser());
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -10,6 +10,7 @@ import com.example.hybridflow.entity.Role;
 import com.example.hybridflow.entity.Team;
 import com.example.hybridflow.entity.User;
 import com.example.hybridflow.exception.BusinessValidationException;
+import com.example.hybridflow.exception.ResourceNotFoundException;
 import com.example.hybridflow.repository.InvitationRepository;
 import com.example.hybridflow.repository.UserRepository;
 
@@ -33,7 +34,7 @@ public class InvitationService {
         this.userRepository = userRepository;
     }
 
-    public void createAndSendInvitation(String email, Role role, Team team, Company company) {
+    public Invitation createAndSendInvitation(String email, Role role, Team team, Company company) {
         if (userRepository.existsByEmail(email)) {
             throw new BusinessValidationException("A user with this email is already registered.");
         }
@@ -54,8 +55,9 @@ public class InvitationService {
         invitation.setCompany(company);
         invitation.setExpiryDate(Instant.now().plusSeconds(86400)); // 24 hours
 
-        invitationRepository.save(invitation);
+        Invitation saved = invitationRepository.save(invitation);
         emailService.sendInvitationEmail(email, role.name());
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -79,8 +81,76 @@ public class InvitationService {
         invitationRepository.save(invitation);
     }
 
+    @Transactional
+    public InvitationResponseDTO resendInvitation(Long id, User hrUser) {
+        Company company = hrUser.getCompany();
+        if (company == null) {
+            throw new BusinessValidationException("HR user is not assigned to a company.");
+        }
+
+        Invitation invitation = invitationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Invitation not found."));
+
+        if (!invitation.getCompany().getId().equals(company.getId())) {
+            throw new BusinessValidationException("You cannot manage an invitation belonging to another company.");
+        }
+
+        if (invitation.isUsed()) {
+            throw new BusinessValidationException("Invitation has already been used.");
+        }
+
+        invitation.setExpiryDate(Instant.now().plusSeconds(86400)); // 24 hours
+        Invitation saved = invitationRepository.save(invitation);
+
+        emailService.sendInvitationEmail(saved.getEmail(), saved.getRole().name());
+
+        InvitationResponseDTO dto = toResponseDTO(saved);
+        dto.setMessage("Invitation resent successfully.");
+        return dto;
+    }
+
+    @Transactional
+    public void cancelInvitation(Long id, User hrUser) {
+        Company company = hrUser.getCompany();
+        if (company == null) {
+            throw new BusinessValidationException("HR user is not assigned to a company.");
+        }
+
+        Invitation invitation = invitationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Invitation not found."));
+
+        if (!invitation.getCompany().getId().equals(company.getId())) {
+            throw new BusinessValidationException("You cannot manage an invitation belonging to another company.");
+        }
+
+        invitationRepository.delete(invitation);
+    }
+
+    @Transactional
+    public InvitationResponseDTO expireInvitation(Long id, User hrUser) {
+        Company company = hrUser.getCompany();
+        if (company == null) {
+            throw new BusinessValidationException("HR user is not assigned to a company.");
+        }
+
+        Invitation invitation = invitationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Invitation not found."));
+
+        if (!invitation.getCompany().getId().equals(company.getId())) {
+            throw new BusinessValidationException("You cannot manage an invitation belonging to another company.");
+        }
+
+        invitation.setExpiryDate(Instant.now().minusSeconds(1)); // Expire immediately
+        Invitation saved = invitationRepository.save(invitation);
+
+        InvitationResponseDTO dto = toResponseDTO(saved);
+        dto.setMessage("Invitation expired successfully.");
+        return dto;
+    }
+
     private InvitationResponseDTO toResponseDTO(Invitation invitation) {
         return InvitationResponseDTO.builder()
+                .id(invitation.getId())
                 .email(invitation.getEmail())
                 .role(invitation.getRole())
                 .teamId(invitation.getTeam() != null ? invitation.getTeam().getId() : null)

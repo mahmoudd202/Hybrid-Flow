@@ -14,7 +14,9 @@ import com.example.hybridflow.entity.Office;
 import com.example.hybridflow.entity.Role;
 import com.example.hybridflow.entity.User;
 import com.example.hybridflow.exception.BusinessValidationException;
+import com.example.hybridflow.exception.ResourceNotFoundException;
 import com.example.hybridflow.repository.OfficeRepository;
+import com.example.hybridflow.repository.TeamRepository;
 
 import java.util.List;
 
@@ -23,6 +25,7 @@ import java.util.List;
 public class OfficeService {
 
     private final OfficeRepository officeRepository;
+    private final TeamRepository teamRepository;
 
     @Transactional(readOnly = true)
     public List<OfficeResponseDTO> getByCompany(User currentUser) {
@@ -67,6 +70,54 @@ public class OfficeService {
 
         Office saved = officeRepository.save(office);
         return toResponse(saved);
+    }
+
+    @Transactional
+    public OfficeResponseDTO updateOffice(Long officeId, OfficeCreateRequestDTO dto, User currentUser) {
+        Company company = validateHrCompanyContext(currentUser);
+
+        Office office = officeRepository.findById(officeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Office not found."));
+
+        if (!office.getCompany().getId().equals(company.getId())) {
+            throw new BusinessValidationException("You do not have access to this office.");
+        }
+
+        String normalizedName = normalizeName(dto.getName());
+
+        // Check for duplicate name (excluding the current office being updated)
+        officeRepository.findByNameAndCompanyId(normalizedName, company.getId())
+                .ifPresent(existing -> {
+                    if (!existing.getId().equals(officeId)) {
+                        throw new BusinessValidationException(
+                                "An office with the name '" + normalizedName + "' already exists in your company.");
+                    }
+                });
+
+        office.setName(normalizedName);
+        office.setMaxCapacity(dto.getMaxCapacity());
+
+        Office updated = officeRepository.save(office);
+        return toResponse(updated);
+    }
+
+    @Transactional
+    public void deleteOffice(Long officeId, User currentUser) {
+        Company company = validateHrCompanyContext(currentUser);
+
+        Office office = officeRepository.findById(officeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Office not found."));
+
+        if (!office.getCompany().getId().equals(company.getId())) {
+            throw new BusinessValidationException("You do not have access to this office.");
+        }
+
+        // Check if any teams are assigned to this office using teamRepository.findByOfficeId
+        if (!teamRepository.findByOfficeId(officeId).isEmpty()) {
+            throw new BusinessValidationException("Cannot delete office because it is currently assigned to one or more teams.");
+        }
+
+        officeRepository.delete(office);
     }
 
     private Company validateHrCompanyContext(User user) {

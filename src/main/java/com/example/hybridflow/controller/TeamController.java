@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import com.example.hybridflow.dto.TeamCreateRequestDTO;
 import com.example.hybridflow.dto.TeamResponseDTO;
+import com.example.hybridflow.dto.EmployeeDetailsResponseDTO;
 import com.example.hybridflow.security.CustomUserDetails;
 import com.example.hybridflow.service.TeamService;
 
@@ -46,5 +47,48 @@ public class TeamController {
 
         List<TeamResponseDTO> teams = teamService.getTeamsByOffice(officeId, userDetails.getUser());
         return ResponseEntity.ok(teams);
+    }
+
+    @PutMapping("/{teamId}")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<TeamResponseDTO> updateTeam(
+            @PathVariable Long teamId,
+            @Valid @RequestBody TeamCreateRequestDTO dto,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        TeamResponseDTO response = teamService.updateTeam(teamId, dto, userDetails.getUser());
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{teamId}")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<Void> deleteTeam(
+            @PathVariable Long teamId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        teamService.deleteTeam(teamId, userDetails.getUser());
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{teamId}/members")
+    @PreAuthorize("hasAnyRole('HR', 'MANAGER', 'EMPLOYEE')")
+    public ResponseEntity<List<EmployeeDetailsResponseDTO>> getTeamMembers(
+            @PathVariable Long teamId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        List<EmployeeDetailsResponseDTO> members = teamService.getTeamMembers(teamId, userDetails.getUser());
+        return ResponseEntity.ok(members);
     }
 }

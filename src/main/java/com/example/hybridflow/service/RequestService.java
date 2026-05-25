@@ -161,6 +161,29 @@ public class RequestService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<RequestResponseDTO> getRequestHistory(
+            User hrUser,
+            RequestStatus status,
+            RequestType type,
+            Long requesterId,
+            LocalDate startDate,
+            LocalDate endDate
+    ) {
+        validateHrContext(hrUser);
+
+        return requestRepository.findCompanyRequestHistoryWithFilters(
+                hrUser.getCompany().getId(),
+                status,
+                type,
+                requesterId,
+                startDate,
+                endDate
+        ).stream()
+         .map(this::toResponse)
+         .toList();
+    }
+
     @Transactional
     public RequestResponseDTO updateRequestStatus(Long requestId, RequestStatus newStatus, User hrUser) {
         validateHrContext(hrUser);

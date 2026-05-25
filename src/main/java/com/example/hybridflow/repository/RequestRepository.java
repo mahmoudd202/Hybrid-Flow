@@ -11,6 +11,9 @@ import com.example.hybridflow.entity.RequestStatus;
 
 import java.util.List;
 
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
 @Repository
 public interface RequestRepository extends JpaRepository<Request, Long> {
 
@@ -28,6 +31,27 @@ public interface RequestRepository extends JpaRepository<Request, Long> {
 
     // For duplicate/overlap detection
     List<Request> findByRequesterIdAndStatusAndType(Long requesterId, RequestStatus status, com.example.hybridflow.entity.RequestType type);
+
+    @Query("""
+        select r from Request r
+        join fetch r.requester req
+        left join fetch r.handledBy hb
+        where r.company.id = :companyId
+          and (:status is null or r.status = :status)
+          and (:type is null or r.type = :type)
+          and (:requesterId is null or req.id = :requesterId)
+          and (:startDate is null or r.startDate >= :startDate)
+          and (:endDate is null or r.endDate <= :endDate)
+        order by r.createdAt desc
+    """)
+    List<Request> findCompanyRequestHistoryWithFilters(
+        @Param("companyId") Long companyId,
+        @Param("status") RequestStatus status,
+        @Param("type") com.example.hybridflow.entity.RequestType type,
+        @Param("requesterId") Long requesterId,
+        @Param("startDate") java.time.LocalDate startDate,
+        @Param("endDate") java.time.LocalDate endDate
+    );
 }
 
 

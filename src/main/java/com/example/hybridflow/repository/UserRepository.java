@@ -40,6 +40,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
         @Query("""
                             select u from User u
+                            left join fetch u.profile
+                            left join fetch u.team t
+                            left join fetch t.office
+                            where u.company.id = :companyId
+                        """)
+        List<User> findAllByCompanyIdWithProfileAndTeam(@Param("companyId") Long companyId);
+
+        @Query("""
+                            select u from User u
                             left join fetch u.company
                             left join fetch u.team t
                             left join fetch t.office
@@ -77,4 +86,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
         //                     order by t.id asc, u.id asc
         //                 """)
         // List<User> findSchedulableUsersByTeamIds(@Param("teamIds") List<Long> teamIds);
+
+        @Query("""
+                            select u from User u
+                            left join fetch u.profile
+                            left join fetch u.team t
+                            left join fetch t.office
+                            where u.team.id = :teamId
+                        """)
+        List<User> findAllByTeamIdWithProfileAndTeam(@Param("teamId") Long teamId);
 }

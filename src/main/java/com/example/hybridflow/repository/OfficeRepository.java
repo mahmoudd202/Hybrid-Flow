@@ -14,4 +14,6 @@ public interface OfficeRepository extends JpaRepository<Office, Long> {
     Optional<Office> findFirstByCompanyIdOrderByIdAsc(Long companyId);
 
     boolean existsByNameAndCompanyId(String name, Long companyId);
+
+    Optional<Office> findByNameAndCompanyId(String name, Long companyId);
 }

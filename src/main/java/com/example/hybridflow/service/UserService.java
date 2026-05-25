@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -209,6 +212,19 @@ public class UserService {
                 .firstName(profile != null ? profile.getFirstName() : null)
                 .lastName(profile != null ? profile.getLastName() : null)
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public List<EmployeeDetailsResponseDTO> getAllEmployees(User currentUser) {
+        if (currentUser.getCompany() == null) {
+            throw new BusinessValidationException("You are not assigned to a company.");
+        }
+
+        List<User> employees = userRepository.findAllByCompanyIdWithProfileAndTeam(currentUser.getCompany().getId());
+
+        return employees.stream()
+                .map(employee -> toEmployeeDetailsResponseDTO(employee, employee.getProfile()))
+                .collect(Collectors.toList());
     }
 
     private EmployeeDetailsResponseDTO toEmployeeDetailsResponseDTO(User employee, UserProfile userProfile) {

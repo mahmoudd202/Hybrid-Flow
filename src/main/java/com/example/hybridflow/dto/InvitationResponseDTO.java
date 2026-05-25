@@ -10,6 +10,7 @@ import lombok.Data;
 @Data
 @Builder
 public class InvitationResponseDTO {
+    private Long id;
     private String email;
     private Role role;
     private Long teamId;

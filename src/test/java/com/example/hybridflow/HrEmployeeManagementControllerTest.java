@@ -19,6 +19,13 @@ import org.springframework.web.context.WebApplicationContext;
 import com.example.hybridflow.repository.RequestRepository;
 import com.example.hybridflow.repository.TeamRepository;
 import com.example.hybridflow.repository.UserRepository;
+import com.example.hybridflow.repository.InvitationRepository;
+import com.example.hybridflow.repository.CompanyRepository;
+import com.example.hybridflow.entity.Invitation;
+import com.example.hybridflow.entity.Company;
+import com.example.hybridflow.entity.User;
+import com.example.hybridflow.entity.Role;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDate;
 import java.util.Map;
@@ -45,6 +52,9 @@ class HrEmployeeManagementControllerTest {
     @Autowired RequestRepository requestRepository;
     @Autowired UserRepository userRepository;
     @Autowired TeamRepository teamRepository;
+    @Autowired InvitationRepository invitationRepository;
+    @Autowired CompanyRepository companyRepository;
+    @Autowired PasswordEncoder passwordEncoder;
 
     MockMvc mockMvc;
     final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
@@ -218,6 +228,235 @@ class HrEmployeeManagementControllerTest {
         mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody))
+                .andExpect(status().is4xxClientError());
+    }
+
+    // -----------------------------------------------------------------------
+    // User management — list all employees
+    // -----------------------------------------------------------------------
+
+    @Test
+    void getAllEmployeesAsHrReturnsEmployeeList() throws Exception {
+        MvcResult result = mockMvc.perform(get("/users")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(response.isArray()).isTrue();
+        assertThat(response.size()).isGreaterThanOrEqualTo(2);
+
+        // Verify some known fields and content
+        boolean foundDev1 = false;
+        boolean foundHr = false;
+        for (JsonNode emp : response) {
+            String email = emp.get("email").asText();
+            if ("dev1@techflow.com".equals(email)) {
+                foundDev1 = true;
+                assertThat(emp.has("firstName")).isTrue();
+                assertThat(emp.has("lastName")).isTrue();
+                assertThat(emp.has("role")).isTrue();
+            } else if ("hr@techflow.com".equals(email)) {
+                foundHr = true;
+            }
+        }
+        assertThat(foundDev1).isTrue();
+        assertThat(foundHr).isTrue();
+    }
+
+    @Test
+    void getAllEmployeesAsEmployeeReturnsSuccess() throws Exception {
+        String employeeBody = objectMapper.writeValueAsString(
+                Map.of("email", "dev1@techflow.com", "password", "password123"));
+
+        MvcResult employeeResult = mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(employeeBody))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String employeeToken = objectMapper.readTree(employeeResult.getResponse().getContentAsString())
+                .get("accessToken").asText();
+
+        mockMvc.perform(get("/users")
+                        .header("Authorization", "Bearer " + employeeToken))
+                .andExpect(status().isOk());
+    }
+
+    // -----------------------------------------------------------------------
+    // Request history integration tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void getRequestHistoryAsHrReturnsFullHistory() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/requests/history")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(response.isArray()).isTrue();
+        assertThat(response.size()).isGreaterThanOrEqualTo(1);
+
+        // Verify structure
+        JsonNode firstItem = response.get(0);
+        assertThat(firstItem.has("id")).isTrue();
+        assertThat(firstItem.has("status")).isTrue();
+        assertThat(firstItem.has("requesterEmail")).isTrue();
+    }
+
+    @Test
+    void getRequestHistoryWithFilters() throws Exception {
+        // Filter by Status: PENDING
+        MvcResult resultPending = mockMvc.perform(get("/api/requests/history")
+                        .param("status", "PENDING")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode pendingResponse = objectMapper.readTree(resultPending.getResponse().getContentAsString());
+        for (JsonNode req : pendingResponse) {
+            assertThat(req.get("status").asText()).isEqualTo("PENDING");
+        }
+
+        // Filter by Requester ID
+        MvcResult resultRequester = mockMvc.perform(get("/api/requests/history")
+                        .param("requesterId", dev1Id.toString())
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode requesterResponse = objectMapper.readTree(resultRequester.getResponse().getContentAsString());
+        for (JsonNode req : requesterResponse) {
+            assertThat(req.get("requesterId").asLong()).isEqualTo(dev1Id);
+        }
+    }
+
+    @Test
+    void getRequestHistoryAsEmployeeReturnsForbidden() throws Exception {
+        String employeeBody = objectMapper.writeValueAsString(
+                Map.of("email", "dev1@techflow.com", "password", "password123"));
+
+        MvcResult employeeResult = mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(employeeBody))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String employeeToken = objectMapper.readTree(employeeResult.getResponse().getContentAsString())
+                .get("accessToken").asText();
+
+        mockMvc.perform(get("/api/requests/history")
+                        .header("Authorization", "Bearer " + employeeToken))
+                .andExpect(status().isForbidden());
+    }
+
+    // -----------------------------------------------------------------------
+    // Invitation Enhancement Tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    void resendInvitationSuccess() throws Exception {
+        Company company = companyRepository.findByCompanyName("TechFlow Corp").orElseThrow();
+        Invitation invite = new Invitation();
+        invite.setEmail("new-invite@techflow.com");
+        invite.setRole(Role.EMPLOYEE);
+        invite.setCompany(company);
+        invite.setExpiryDate(java.time.Instant.now().plusSeconds(10));
+        invite.setUsed(false);
+        invite = invitationRepository.save(invite);
+
+        mockMvc.perform(post("/api/invitations/" + invite.getId() + "/resend")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Invitation resent successfully."))
+                .andExpect(jsonPath("$.email").value("new-invite@techflow.com"));
+        
+        Invitation updated = invitationRepository.findById(invite.getId()).orElseThrow();
+        assertThat(updated.getExpiryDate()).isAfter(java.time.Instant.now().plusSeconds(86300));
+    }
+
+    @Test
+    void resendUsedInvitationThrowsException() throws Exception {
+        Company company = companyRepository.findByCompanyName("TechFlow Corp").orElseThrow();
+        Invitation invite = new Invitation();
+        invite.setEmail("used-invite@techflow.com");
+        invite.setRole(Role.EMPLOYEE);
+        invite.setCompany(company);
+        invite.setExpiryDate(java.time.Instant.now().plusSeconds(86400));
+        invite.setUsed(true);
+        invite = invitationRepository.save(invite);
+
+        mockMvc.perform(post("/api/invitations/" + invite.getId() + "/resend")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void cancelInvitationSuccess() throws Exception {
+        Company company = companyRepository.findByCompanyName("TechFlow Corp").orElseThrow();
+        Invitation invite = new Invitation();
+        invite.setEmail("to-cancel@techflow.com");
+        invite.setRole(Role.EMPLOYEE);
+        invite.setCompany(company);
+        invite.setExpiryDate(java.time.Instant.now().plusSeconds(86400));
+        invite.setUsed(false);
+        invite = invitationRepository.save(invite);
+
+        // Test DELETE endpoint
+        mockMvc.perform(delete("/api/invitations/" + invite.getId())
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isNoContent());
+
+        assertThat(invitationRepository.findById(invite.getId())).isEmpty();
+    }
+
+    @Test
+    void expireInvitationSuccess() throws Exception {
+        Company company = companyRepository.findByCompanyName("TechFlow Corp").orElseThrow();
+        Invitation invite = new Invitation();
+        invite.setEmail("to-expire@techflow.com");
+        invite.setRole(Role.EMPLOYEE);
+        invite.setCompany(company);
+        invite.setExpiryDate(java.time.Instant.now().plusSeconds(86400));
+        invite.setUsed(false);
+        invite = invitationRepository.save(invite);
+
+        mockMvc.perform(post("/api/invitations/" + invite.getId() + "/expire")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Invitation expired successfully."));
+
+        Invitation updated = invitationRepository.findById(invite.getId()).orElseThrow();
+        assertThat(updated.getExpiryDate()).isBefore(java.time.Instant.now());
+    }
+
+    @Test
+    void tenantIsolationEnforcedOnInvitationManagement() throws Exception {
+        // Create another company
+        Company otherCompany = new Company();
+        otherCompany.setCompanyName("Other Corp");
+        otherCompany = companyRepository.save(otherCompany);
+
+        Invitation otherInvite = new Invitation();
+        otherInvite.setEmail("other-invite@othercorp.com");
+        otherInvite.setRole(Role.EMPLOYEE);
+        otherInvite.setCompany(otherCompany);
+        otherInvite.setExpiryDate(java.time.Instant.now().plusSeconds(86400));
+        otherInvite.setUsed(false);
+        otherInvite = invitationRepository.save(otherInvite);
+
+        // Try resending, cancelling, and expiring with TechFlow HR token
+        mockMvc.perform(post("/api/invitations/" + otherInvite.getId() + "/resend")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().is4xxClientError());
+
+        mockMvc.perform(delete("/api/invitations/" + otherInvite.getId())
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().is4xxClientError());
+
+        mockMvc.perform(post("/api/invitations/" + otherInvite.getId() + "/expire")
+                        .header("Authorization", "Bearer " + hrToken))
                 .andExpect(status().is4xxClientError());
     }
 }

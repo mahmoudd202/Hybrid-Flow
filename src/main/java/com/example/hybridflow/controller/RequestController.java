@@ -79,6 +79,29 @@ public class RequestController {
         );
     }
 
+    @GetMapping("/history")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<List<RequestResponseDTO>> getRequestHistory(
+            @RequestParam(required = false) RequestStatus status,
+            @RequestParam(required = false) com.example.hybridflow.entity.RequestType type,
+            @RequestParam(required = false) Long requesterId,
+            @RequestParam(required = false) java.time.LocalDate startDate,
+            @RequestParam(required = false) java.time.LocalDate endDate,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) return ResponseEntity.status(401).build();
+
+        List<RequestResponseDTO> history = requestService.getRequestHistory(
+                userDetails.getUser(),
+                status,
+                type,
+                requesterId,
+                startDate,
+                endDate
+        );
+        return ResponseEntity.ok(history);
+    }
+
     @PatchMapping("/{requestId}/approve")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<RequestResponseDTO> approveRequest(
