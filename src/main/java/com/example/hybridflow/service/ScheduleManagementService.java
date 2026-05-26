@@ -242,6 +242,14 @@ public class ScheduleManagementService {
 
                 for (Schedule schedule : schedules) {
                         schedule.setPublished(true);
+
+                        // Sync the team's office assignment so that getTeamsByOffice
+                        // (which queries teams.office_id) reflects the published office.
+                        Team team = schedule.getTeam();
+                        if (team != null && schedule.getOffice() != null) {
+                                team.setOffice(schedule.getOffice());
+                                teamRepository.save(team);
+                        }
                 }
 
                 scheduleRepository.saveAll(schedules);
@@ -328,6 +336,14 @@ public class ScheduleManagementService {
 
                 schedule.setPublished(true);
                 scheduleRepository.save(schedule);
+
+                // Sync the team's office assignment so that getTeamsByOffice
+                // (which queries teams.office_id) reflects the published office.
+                Team team = schedule.getTeam();
+                if (team != null && schedule.getOffice() != null) {
+                        team.setOffice(schedule.getOffice());
+                        teamRepository.save(team);
+                }
         }
 
         // -------------------------------------------------------------------------
