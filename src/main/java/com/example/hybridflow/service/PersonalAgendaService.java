@@ -7,63 +7,63 @@ import org.springframework.stereotype.Service;
 import com.example.hybridflow.dto.PersonalTaskCreateRequestDTO;
 import com.example.hybridflow.dto.PersonalTaskResponseDTO;
 import com.example.hybridflow.dto.PersonalTaskUpdateRequestDTO;
-import com.example.hybridflow.entity.PersonalTask;
-import com.example.hybridflow.entity.PersonalTaskStatus;
+import com.example.hybridflow.entity.PersonalAgenda;
+import com.example.hybridflow.entity.PersonalAgendaStatus;
 import com.example.hybridflow.entity.User;
 import com.example.hybridflow.exception.ResourceNotFoundException;
-import com.example.hybridflow.repository.PersonalTaskRepository;
+import com.example.hybridflow.repository.PersonalAgendaRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
-public class PersonalTaskService {
+public class PersonalAgendaService {
 
-    private final PersonalTaskRepository personalTaskRepository;
+    private final PersonalAgendaRepository personalAgendaRepository;
 
-    public PersonalTaskService(PersonalTaskRepository personalTaskRepository) {
-        this.personalTaskRepository = personalTaskRepository;
+    public PersonalAgendaService(PersonalAgendaRepository personalAgendaRepository) {
+        this.personalAgendaRepository = personalAgendaRepository;
     }
 
     @Transactional
     public PersonalTaskResponseDTO createPersonalTask(PersonalTaskCreateRequestDTO dto, User currentUser) {
         validateAuthenticatedUser(currentUser);
 
-        PersonalTask task = new PersonalTask();
+        PersonalAgenda task = new PersonalAgenda();
         task.setTitle(dto.getTitle().trim());
         task.setDescription(dto.getDescription());
         task.setDueDate(dto.getDueDate());
-        task.setStatus(PersonalTaskStatus.TODO);
+        task.setStatus(PersonalAgendaStatus.NOT_STARTED);
         task.setCreatedAt(LocalDateTime.now());
         task.setOwner(currentUser);
 
-        PersonalTask savedTask = personalTaskRepository.save(task);
+        PersonalAgenda savedTask = personalAgendaRepository.save(task);
         return toResponse(savedTask);
     }
 
     public List<PersonalTaskResponseDTO> getMyPersonalTasks(User currentUser) {
         validateAuthenticatedUser(currentUser);
 
-        return personalTaskRepository.findByOwnerIdOrderByDueDateAsc(currentUser.getId())
+        return personalAgendaRepository.findByOwnerIdOrderByDueDateAsc(currentUser.getId())
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
-    public PersonalTaskResponseDTO updateMyPersonalTaskStatus(Long taskId, PersonalTaskStatus newStatus, User currentUser) {
+    public PersonalTaskResponseDTO updateMyPersonalTaskStatus(Long taskId, PersonalAgendaStatus newStatus, User currentUser) {
         validateAuthenticatedUser(currentUser);
 
         if (newStatus == null) {
             throw new IllegalArgumentException("status is required");
         }
 
-        PersonalTask task = personalTaskRepository.findByIdAndOwnerId(taskId, currentUser.getId())
+        PersonalAgenda task = personalAgendaRepository.findByIdAndOwnerId(taskId, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Personal task not found"));
 
         task.setStatus(newStatus);
 
-        PersonalTask updatedTask = personalTaskRepository.save(task);
+        PersonalAgenda updatedTask = personalAgendaRepository.save(task);
         return toResponse(updatedTask);
     }
 
@@ -71,24 +71,24 @@ public class PersonalTaskService {
     public void deleteMyPersonalTask(Long taskId, User currentUser) {
         validateAuthenticatedUser(currentUser);
 
-        PersonalTask task = personalTaskRepository.findByIdAndOwnerId(taskId, currentUser.getId())
+        PersonalAgenda task = personalAgendaRepository.findByIdAndOwnerId(taskId, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Personal task not found"));
 
-        personalTaskRepository.delete(task);
+        personalAgendaRepository.delete(task);
     }
 
     @Transactional
     public PersonalTaskResponseDTO updateMyPersonalTask(Long taskId, PersonalTaskUpdateRequestDTO dto, User currentUser) {
         validateAuthenticatedUser(currentUser);
 
-        PersonalTask task = personalTaskRepository.findByIdAndOwnerId(taskId, currentUser.getId())
+        PersonalAgenda task = personalAgendaRepository.findByIdAndOwnerId(taskId, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Personal task not found"));
 
         task.setTitle(dto.getTitle().trim());
         task.setDescription(dto.getDescription());
         task.setDueDate(dto.getDueDate());
 
-        PersonalTask updatedTask = personalTaskRepository.save(task);
+        PersonalAgenda updatedTask = personalAgendaRepository.save(task);
         return toResponse(updatedTask);
     }
 
@@ -101,7 +101,7 @@ public class PersonalTaskService {
         }
     }
 
-    private PersonalTaskResponseDTO toResponse(PersonalTask task) {
+    private PersonalTaskResponseDTO toResponse(PersonalAgenda task) {
         return PersonalTaskResponseDTO.builder()
                 .id(task.getId())
                 .title(task.getTitle())

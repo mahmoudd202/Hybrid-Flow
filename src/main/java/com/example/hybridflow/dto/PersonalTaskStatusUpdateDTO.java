@@ -1,6 +1,6 @@
 package com.example.hybridflow.dto;
 
-import com.example.hybridflow.entity.PersonalTaskStatus;
+import com.example.hybridflow.entity.PersonalAgendaStatus;
 
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -9,5 +9,5 @@ import lombok.Data;
 public class PersonalTaskStatusUpdateDTO {
 
     @NotNull(message = "status is required")
-    private PersonalTaskStatus status;
+    private PersonalAgendaStatus status;
 }

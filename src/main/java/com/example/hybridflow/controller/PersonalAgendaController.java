@@ -11,18 +11,18 @@ import com.example.hybridflow.dto.PersonalTaskResponseDTO;
 import com.example.hybridflow.dto.PersonalTaskStatusUpdateDTO;
 import com.example.hybridflow.dto.PersonalTaskUpdateRequestDTO;
 import com.example.hybridflow.security.CustomUserDetails;
-import com.example.hybridflow.service.PersonalTaskService;
+import com.example.hybridflow.service.PersonalAgendaService;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/personal-tasks")
-public class PersonalTaskController {
+@RequestMapping("/api/personal-agendas")
+public class PersonalAgendaController {
 
-    private final PersonalTaskService personalTaskService;
+    private final PersonalAgendaService personalAgendaService;
 
-    public PersonalTaskController(PersonalTaskService personalTaskService) {
-        this.personalTaskService = personalTaskService;
+    public PersonalAgendaController(PersonalAgendaService personalAgendaService) {
+        this.personalAgendaService = personalAgendaService;
     }
 
     @PostMapping
@@ -36,7 +36,7 @@ public class PersonalTaskController {
         }
 
         PersonalTaskResponseDTO response =
-                personalTaskService.createPersonalTask(dto, userDetails.getUser());
+                personalAgendaService.createPersonalTask(dto, userDetails.getUser());
 
         return ResponseEntity.ok(response);
     }
@@ -51,7 +51,7 @@ public class PersonalTaskController {
         }
 
         return ResponseEntity.ok(
-                personalTaskService.getMyPersonalTasks(userDetails.getUser())
+                personalAgendaService.getMyPersonalTasks(userDetails.getUser())
         );
     }
 
@@ -67,7 +67,7 @@ public class PersonalTaskController {
         }
 
         PersonalTaskResponseDTO response =
-                personalTaskService.updateMyPersonalTaskStatus(id, dto.getStatus(), userDetails.getUser());
+                personalAgendaService.updateMyPersonalTaskStatus(id, dto.getStatus(), userDetails.getUser());
 
         return ResponseEntity.ok(response);
     }
@@ -82,7 +82,7 @@ public class PersonalTaskController {
             return ResponseEntity.status(401).build();
         }
 
-        personalTaskService.deleteMyPersonalTask(id, userDetails.getUser());
+        personalAgendaService.deleteMyPersonalTask(id, userDetails.getUser());
         return ResponseEntity.noContent().build();
     }
 
@@ -98,7 +98,7 @@ public class PersonalTaskController {
         }
 
         PersonalTaskResponseDTO response =
-                personalTaskService.updateMyPersonalTask(id, dto, userDetails.getUser());
+                personalAgendaService.updateMyPersonalTask(id, dto, userDetails.getUser());
 
         return ResponseEntity.ok(response);
     }

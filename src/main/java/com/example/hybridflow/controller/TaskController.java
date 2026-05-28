@@ -6,6 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import com.example.hybridflow.dto.BacklogTaskCreateRequestDTO;
 import com.example.hybridflow.dto.TaskAssignmentResponseDTO;
 import com.example.hybridflow.dto.TaskAssignmentStatusUpdateDTO;
 import com.example.hybridflow.dto.TaskCreateRequestDTO;
@@ -41,6 +42,31 @@ public class TaskController {
 
         TaskDetailsResponseDTO response = taskService.createTask(dto, userDetails.getUser());
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/backlog")
+    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
+    public ResponseEntity<TaskAssignmentResponseDTO> createBacklogTask(
+            @Valid @RequestBody BacklogTaskCreateRequestDTO dto,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        return ResponseEntity.status(201)
+                .body(taskService.createBacklogTask(dto, userDetails.getUser()));
+    }
+
+    @DeleteMapping("/backlog/{assignmentId}")
+    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
+    public ResponseEntity<Void> deleteBacklogTask(
+            @PathVariable Long assignmentId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
+
+        taskService.deleteBacklogTask(assignmentId, userDetails.getUser());
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{taskId}")
@@ -89,6 +115,30 @@ public class TaskController {
 
         return ResponseEntity.ok(
                 taskMapper.toAssignmentResponseList(taskService.getMyAssignments(userDetails.getUser())));
+    }
+
+    @GetMapping("/team/backlog")
+    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
+    public ResponseEntity<List<TaskAssignmentResponseDTO>> getTeamBacklog(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        return ResponseEntity.ok(
+                taskMapper.toAssignmentResponseList(taskService.getTeamBacklog(userDetails.getUser())));
+    }
+
+    @GetMapping("/team/dashboard")
+    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
+    public ResponseEntity<List<TaskAssignmentResponseDTO>> getTeamDashboard(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        return ResponseEntity.ok(
+                taskMapper.toAssignmentResponseList(taskService.getTeamDashboard(userDetails.getUser())));
     }
 
     @GetMapping("/{taskId}/assignments")

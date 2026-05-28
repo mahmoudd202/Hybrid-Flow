@@ -92,12 +92,12 @@ class EmployeeExperienceControllerTest {
         seededRequestId = requestRepository.findByRequesterId(dev1Id)
                 .get(0).getId();
 
-        // Find a future OFFICE day for dev1 (needed for WFH request validation)
+        LocalDate seededRequestDate = LocalDate.now().with(java.time.DayOfWeek.MONDAY).plusWeeks(1).plusDays(3);
         wfhDate = scheduleEntryRepository
                 .findPublishedEntriesForUser(dev1Id, LocalDate.now().plusDays(1), LocalDate.now().plusDays(28))
                 .stream()
                 .filter(e -> e.getWorkMode() == WorkMode.OFFICE)
-                .filter(e -> !e.getDate().equals(LocalDate.now().plusDays(3))) // skip seeded request date
+                .filter(e -> !e.getDate().equals(seededRequestDate)) // skip seeded request date
                 .map(e -> e.getDate())
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("No future OFFICE entry found for dev1 — seed data issue"));

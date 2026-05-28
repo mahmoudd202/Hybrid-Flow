@@ -85,4 +85,39 @@ public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, 
       """)
   List<TaskAssignment> findActiveAssignmentsForUserInDateRange(Long userId, LocalDateTime startDate,
       LocalDateTime endDate);
+
+  /**
+   * Returns all BACKLOG assignments for a given team.
+   * Used by the shared team backlog dashboard endpoint.
+   * Any team member (employee or manager) may read these.
+   */
+  @Query("""
+          select ta from TaskAssignment ta
+          join fetch ta.task t
+          join fetch ta.assignee a
+          join fetch t.createdBy cb
+          join fetch t.company c
+          join fetch t.team tm
+          where tm.id = :teamId
+            and ta.status = com.example.hybridflow.entity.TaskAssignmentStatus.BACKLOG
+          order by t.dueDate asc, ta.id asc
+      """)
+  List<TaskAssignment> findBacklogByTeamId(Long teamId);
+
+  /**
+   * Returns ALL assignments for a given team (all statuses).
+   * Used by the shared team dashboard — the full Jira-style board view.
+   * Any team member (employee or manager) may read these.
+   */
+  @Query("""
+          select ta from TaskAssignment ta
+          join fetch ta.task t
+          join fetch ta.assignee a
+          join fetch t.createdBy cb
+          join fetch t.company c
+          join fetch t.team tm
+          where tm.id = :teamId
+          order by ta.status asc, t.dueDate asc, ta.id asc
+      """)
+  List<TaskAssignment> findAllByTeamId(Long teamId);
 }

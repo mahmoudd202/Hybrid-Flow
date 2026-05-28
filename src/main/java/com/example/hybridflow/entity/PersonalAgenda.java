@@ -3,9 +3,9 @@ import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;
 @Entity
-@Table(name = "personal_tasks")
+@Table(name = "personal_agendas")
 @Data
-public class PersonalTask {
+public class PersonalAgenda {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -17,7 +17,7 @@ public class PersonalTask {
     private LocalDateTime dueDate;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private PersonalTaskStatus status;
+    private PersonalAgendaStatus status;
     @Column(nullable = false)
     private LocalDateTime createdAt;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

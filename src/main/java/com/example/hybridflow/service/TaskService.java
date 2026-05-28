@@ -4,6 +4,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import com.example.hybridflow.dto.BacklogTaskCreateRequestDTO;
+import com.example.hybridflow.dto.TaskAssignmentResponseDTO;
 import com.example.hybridflow.dto.TaskCreateRequestDTO;
 import com.example.hybridflow.dto.TaskDetailsResponseDTO;
 import com.example.hybridflow.dto.TaskUpdateRequestDTO;
@@ -72,6 +74,64 @@ public class TaskService {
                 savedTask,
                 result.getSavedAssignments(),
                 result.getExcludedAssigneeEmails());
+    }
+
+    @Transactional
+    public TaskAssignmentResponseDTO createBacklogTask(BacklogTaskCreateRequestDTO dto, User creator) {
+        if (creator == null) {
+            throw new AccessDeniedException("Unauthenticated");
+        }
+
+        if (creator.getTeam() == null) {
+            throw new AccessDeniedException("You are not attached to any team");
+        }
+
+        if (creator.getCompany() == null) {
+            throw new AccessDeniedException("You are not attached to any company");
+        }
+
+        Task task = new Task();
+        task.setTitle(dto.getTitle().trim());
+        task.setDescription(dto.getDescription());
+        task.setDueDate(dto.getDueDate());
+        task.setTargetType(TaskTargetType.INDIVIDUAL);
+        task.setCreatedBy(creator);
+        task.setCompany(creator.getCompany());
+        task.setTeam(creator.getTeam());
+
+        Task savedTask = taskRepository.save(task);
+
+        TaskAssignment assignment = new TaskAssignment();
+        assignment.setTask(savedTask);
+        assignment.setAssignee(creator);
+        assignment.setStatus(TaskAssignmentStatus.BACKLOG);
+        assignment.setAssignedAt(LocalDateTime.now());
+
+        TaskAssignment savedAssignment = taskAssignmentRepository.save(assignment);
+
+        return taskMapper.toAssignmentResponse(savedAssignment);
+    }
+
+    @Transactional
+    public void deleteBacklogTask(Long assignmentId, User user) {
+        if (user == null) {
+            throw new AccessDeniedException("Unauthenticated");
+        }
+
+        TaskAssignment assignment = taskAssignmentRepository.findDetailedById(assignmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Backlog item not found"));
+
+        if (assignment.getStatus() != TaskAssignmentStatus.BACKLOG) {
+            throw new BusinessValidationException("Only BACKLOG items can be deleted through this endpoint");
+        }
+
+        if (!assignment.getAssignee().getId().equals(user.getId())) {
+            throw new AccessDeniedException("You can only delete your own backlog items");
+        }
+
+        Task task = assignment.getTask();
+        taskAssignmentRepository.delete(assignment);
+        taskRepository.delete(task);
     }
 
     @Transactional
@@ -170,6 +230,34 @@ public class TaskService {
         }
 
         return taskAssignmentRepository.findAllForAssignee(user.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaskAssignment> getTeamBacklog(User user) {
+        if (user == null) {
+            throw new AccessDeniedException("Unauthenticated");
+        }
+
+        Team team = user.getTeam();
+        if (team == null) {
+            throw new AccessDeniedException("You are not attached to any team");
+        }
+
+        return taskAssignmentRepository.findBacklogByTeamId(team.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaskAssignment> getTeamDashboard(User user) {
+        if (user == null) {
+            throw new AccessDeniedException("Unauthenticated");
+        }
+
+        Team team = user.getTeam();
+        if (team == null) {
+            throw new AccessDeniedException("You are not attached to any team");
+        }
+
+        return taskAssignmentRepository.findAllByTeamId(team.getId());
     }
 
     @Transactional(readOnly = true)

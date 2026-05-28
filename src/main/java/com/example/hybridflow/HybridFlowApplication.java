@@ -267,8 +267,9 @@ public class HybridFlowApplication {
             wfhRequest.setCompany(company);
             wfhRequest.setType(RequestType.WFH);
             wfhRequest.setStatus(RequestStatus.PENDING);
-            wfhRequest.setStartDate(LocalDate.now().plusDays(3));
-            wfhRequest.setEndDate(LocalDate.now().plusDays(3));
+            LocalDate seededRequestDate = LocalDate.now().with(DayOfWeek.MONDAY).plusWeeks(1).plusDays(3);
+            wfhRequest.setStartDate(seededRequestDate);
+            wfhRequest.setEndDate(seededRequestDate);
             wfhRequest.setReason("Doctor appointment in the morning, working from home in the afternoon.");
             requestRepository.save(wfhRequest);
 

@@ -5,7 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-import com.example.hybridflow.entity.PersonalTaskStatus;
+import com.example.hybridflow.entity.PersonalAgendaStatus;
 
 @Data
 @Builder
@@ -15,7 +15,7 @@ public class PersonalTaskResponseDTO {
     private String title;
     private String description;
     private LocalDateTime dueDate;
-    private PersonalTaskStatus status;
+    private PersonalAgendaStatus status;
     private LocalDateTime createdAt;
 
     private Long ownerId;
