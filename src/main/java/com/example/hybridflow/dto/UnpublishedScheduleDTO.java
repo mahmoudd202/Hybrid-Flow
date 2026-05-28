@@ -43,4 +43,16 @@ public class UnpublishedScheduleDTO {
 
     /** Per-member fairness scores for the team. */
     private List<IndividualFairnessDTO> individualFairnessScores;
+
+    /** The actual draft schedule entries for members in this team. */
+    private List<UserScheduleDTO> members;
+
+    // ── Optimization run metadata ─────────────────────────────────────────────
+    /**
+     * The Gurobi run that generated this schedule draft.
+     * Non-null for all schedules created after the async-generation feature was
+     * introduced. When present, scores above are sourced from the stored snapshot
+     * (no re-evaluation drift). Null for legacy/seeded schedules.
+     */
+    private OptimizationRunDTO optimizationRun;
 }

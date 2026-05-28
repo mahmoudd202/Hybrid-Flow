@@ -3,15 +3,18 @@ package com.example.hybridflow.service;
 import com.example.hybridflow.dto.ConflictingTeamDTO;
 import com.example.hybridflow.dto.DeleteUnpublishedSchedulesResponseDTO;
 import com.example.hybridflow.dto.IndividualFairnessDTO;
+import com.example.hybridflow.dto.OptimizationRunDTO;
 import com.example.hybridflow.dto.ScheduleConflictCheckRequestDTO;
 import com.example.hybridflow.dto.ScheduleConflictCheckResponseDTO;
 import com.example.hybridflow.dto.ScheduleDiscardRequestDTO;
 import com.example.hybridflow.dto.ScheduleDiscardResponseDTO;
 import com.example.hybridflow.dto.SchedulePublishRequestDTO;
 import com.example.hybridflow.dto.SchedulePublishResponseDTO;
+import com.example.hybridflow.dto.ScheduleEntryDTO;
 import com.example.hybridflow.dto.TeamFairnessDTO;
 import com.example.hybridflow.dto.UnpublishedScheduleDTO;
 import com.example.hybridflow.dto.UnpublishedSchedulesResponseDTO;
+import com.example.hybridflow.dto.UserScheduleDTO;
 import com.example.hybridflow.entity.Role;
 import com.example.hybridflow.entity.Schedule;
 import com.example.hybridflow.entity.ScheduleEntry;
@@ -32,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +48,7 @@ public class ScheduleManagementService {
         private final ScheduleRepository scheduleRepository;
         private final ScheduleEntryRepository scheduleEntryRepository;
         private final ScheduleEvaluationService scheduleEvaluationService;
+        private final ScheduleOptimizationRunService optimizationRunService;
         private final UserRepository userRepository;
         private final TeamRepository teamRepository;
 
@@ -77,73 +82,64 @@ public class ScheduleManagementService {
                                         .build();
                 }
 
-                // ── Gather supporting data for fairness evaluation ────────────────────
+                // ── Batch load all draft entries and users to prevent N+1 queries ──────
+                List<Long> unpublishedScheduleIds = unpublished.stream()
+                                .map(Schedule::getId)
+                                .toList();
 
-                // All distinct team IDs referenced by the unpublished schedules
+                List<ScheduleEntry> allDraftEntries = scheduleEntryRepository
+                                .findDraftEntriesByScheduleIds(unpublishedScheduleIds);
+
+                Map<Long, List<ScheduleEntry>> entriesByScheduleId = allDraftEntries.stream()
+                                .collect(Collectors.groupingBy(se -> se.getSchedule().getId()));
+
                 List<Long> teamIds = unpublished.stream()
                                 .map(s -> s.getTeam().getId())
                                 .distinct()
                                 .toList();
 
-                List<Team> teams = teamRepository.findAllById(teamIds);
-
-                // All active users that belong to those teams
-                List<User> users = userRepository.findByTeamIdIn(teamIds);
-
-                // Schedule IDs needed for the evaluation service
-                List<Long> scheduleIds = unpublished.stream()
-                                .map(Schedule::getId)
-                                .toList();
-
-                // The date range spans from the earliest startDate to the latest endDate
-                LocalDate minStart = unpublished.stream()
-                                .map(Schedule::getStartDate)
-                                .min(LocalDate::compareTo)
-                                .orElseThrow();
-                LocalDate maxEnd = unpublished.stream()
-                                .map(Schedule::getEndDate)
-                                .max(LocalDate::compareTo)
-                                .orElseThrow();
-
-                // Because PlanningPolicy is not stored on Schedule, ScheduleEvaluationService
-                // looks up the most-recently-created policy for the company automatically.
-                // See evaluateForUnpublished() for the fallback logic.
-                EvaluationResult evaluation = scheduleEvaluationService
-                                .evaluateForUnpublished(scheduleIds, users, teams, minStart, maxEnd);
-
-                // ── Build per-schedule DTOs ────────────────────────────────────────────
-
-                // Map individual scores by userId for quick lookup
-                Map<Long, IndividualFairnessDTO> individualByUserId = evaluation
-                                .getIndividualFairnessScores()
-                                .stream()
-                                .collect(Collectors.toMap(
-                                                IndividualFairnessDTO::getUserId,
-                                                dto -> dto));
-
-                // Map team scores by teamId
-                Map<Long, TeamFairnessDTO> teamScoreByTeamId = evaluation
-                                .getTeamFairnessScores()
-                                .stream()
-                                .collect(Collectors.toMap(
-                                                TeamFairnessDTO::getTeamId,
-                                                dto -> dto));
-
-                // Map users by teamId for individual score lookup per schedule
-                Map<Long, List<User>> usersByTeamId = users.stream()
+                List<User> allTeamUsers = userRepository.findByTeamIdIn(teamIds);
+                Map<Long, List<User>> usersByTeamId = allTeamUsers.stream()
                                 .filter(u -> u.getTeam() != null)
                                 .collect(Collectors.groupingBy(u -> u.getTeam().getId()));
 
-                List<UnpublishedScheduleDTO> scheduleDTOs = unpublished.stream()
+                // ── Separate schedules that have a stored run from those that don't ────
+                Map<Boolean, List<Schedule>> partitioned = unpublished.stream()
+                                .collect(Collectors.partitioningBy(
+                                                s -> s.getOptimizationRun() != null));
+
+                List<Schedule> withRun    = partitioned.get(true);
+                List<Schedule> withoutRun = partitioned.get(false);
+
+                // ── Build stored-run DTOs ─────────────────────────────────────────────
+                Map<Long, OptimizationRunDTO> runDTOByRunId = withRun.stream()
+                                .collect(Collectors.toMap(
+                                                s -> s.getOptimizationRun().getId(),
+                                                s -> optimizationRunService.toDTO(s.getOptimizationRun()),
+                                                (a, b) -> a));
+
+                List<UnpublishedScheduleDTO> storedRunDTOs = withRun.stream()
                                 .map(schedule -> {
                                         Long teamId = schedule.getTeam().getId();
+                                        OptimizationRunDTO runDTO =
+                                                runDTOByRunId.get(schedule.getOptimizationRun().getId());
 
-                                        List<IndividualFairnessDTO> individualScoresForTeam = usersByTeamId
-                                                        .getOrDefault(teamId, List.of())
-                                                        .stream()
-                                                        .map(u -> individualByUserId.get(u.getId()))
-                                                        .filter(dto -> dto != null)
-                                                        .toList();
+                                        TeamFairnessDTO teamScore = runDTO.getTeamFairnessScores() == null
+                                                ? null
+                                                : runDTO.getTeamFairnessScores().stream()
+                                                         .filter(t -> t.getTeamId().equals(teamId))
+                                                         .findFirst().orElse(null);
+
+                                        List<IndividualFairnessDTO> memberScores =
+                                                runDTO.getIndividualFairnessScores() == null
+                                                ? List.of()
+                                                : runDTO.getIndividualFairnessScores().stream()
+                                                         .filter(i -> teamScore != null
+                                                                 && teamBelongsToMember(i.getUserId(), teamId))
+                                                         .toList();
+
+                                        List<UserScheduleDTO> members = buildUserSchedulesForDraft(
+                                                schedule, usersByTeamId, entriesByScheduleId);
 
                                         return UnpublishedScheduleDTO.builder()
                                                         .scheduleId(schedule.getId())
@@ -154,18 +150,142 @@ public class ScheduleManagementService {
                                                         .startDate(schedule.getStartDate())
                                                         .endDate(schedule.getEndDate())
                                                         .createdAt(schedule.getCreatedAt())
-                                                        .overallFairnessScore(evaluation.getOverallFairnessScore())
-                                                        .teamFairnessScore(teamScoreByTeamId.get(teamId))
-                                                        .individualFairnessScores(individualScoresForTeam)
+                                                        .overallFairnessScore(
+                                                                runDTO.getOverallFairnessScore() != null
+                                                                ? runDTO.getOverallFairnessScore() : 0.0)
+                                                        .teamFairnessScore(teamScore)
+                                                        .individualFairnessScores(memberScores)
+                                                        .members(members)
+                                                        .optimizationRun(runDTO)
                                                         .build();
                                 })
                                 .toList();
 
+                // ── Build legacy (live-recompute) DTOs ────────────────────────────────
+                List<UnpublishedScheduleDTO> legacyDTOs = List.of();
+
+                if (!withoutRun.isEmpty()) {
+                        List<Long> legacyTeamIds = withoutRun.stream()
+                                        .map(s -> s.getTeam().getId()).distinct().toList();
+                        List<Team> legacyTeams = teamRepository.findAllById(legacyTeamIds);
+                        List<Long> legacyScheduleIds = withoutRun.stream().map(Schedule::getId).toList();
+
+                        LocalDate minStart = withoutRun.stream().map(Schedule::getStartDate)
+                                        .min(LocalDate::compareTo).orElseThrow();
+                        LocalDate maxEnd = withoutRun.stream().map(Schedule::getEndDate)
+                                        .max(LocalDate::compareTo).orElseThrow();
+
+                        EvaluationResult evaluation = scheduleEvaluationService
+                                        .evaluateForUnpublished(legacyScheduleIds, allTeamUsers,
+                                                        legacyTeams, minStart, maxEnd);
+
+                        Map<Long, IndividualFairnessDTO> individualByUserId = evaluation
+                                        .getIndividualFairnessScores().stream()
+                                        .collect(Collectors.toMap(IndividualFairnessDTO::getUserId, d -> d));
+
+                        Map<Long, TeamFairnessDTO> teamScoreByTeamId = evaluation
+                                        .getTeamFairnessScores().stream()
+                                        .collect(Collectors.toMap(TeamFairnessDTO::getTeamId, d -> d));
+
+                        legacyDTOs = withoutRun.stream().map(schedule -> {
+                                Long teamId = schedule.getTeam().getId();
+                                List<IndividualFairnessDTO> individualScoresForTeam =
+                                        usersByTeamId.getOrDefault(teamId, List.of()).stream()
+                                                .map(u -> individualByUserId.get(u.getId()))
+                                                .filter(d -> d != null).toList();
+
+                                List<UserScheduleDTO> members = buildUserSchedulesForDraft(
+                                        schedule, usersByTeamId, entriesByScheduleId);
+
+                                return UnpublishedScheduleDTO.builder()
+                                                .scheduleId(schedule.getId())
+                                                .teamId(teamId)
+                                                .teamName(schedule.getTeam().getName())
+                                                .officeId(schedule.getOffice().getId())
+                                                .officeName(schedule.getOffice().getName())
+                                                .startDate(schedule.getStartDate())
+                                                .endDate(schedule.getEndDate())
+                                                .createdAt(schedule.getCreatedAt())
+                                                .overallFairnessScore(evaluation.getOverallFairnessScore())
+                                                .teamFairnessScore(teamScoreByTeamId.get(teamId))
+                                                .individualFairnessScores(individualScoresForTeam)
+                                                .members(members)
+                                                .optimizationRun(null)
+                                                .build();
+                        }).toList();
+                }
+
+                // ── Merge and compute aggregate overall score ─────────────────────────
+                List<UnpublishedScheduleDTO> allDTOs = new ArrayList<>();
+                allDTOs.addAll(storedRunDTOs);
+                allDTOs.addAll(legacyDTOs);
+
+                double aggregateOverall = allDTOs.stream()
+                                .mapToDouble(UnpublishedScheduleDTO::getOverallFairnessScore)
+                                .average().orElse(0.0);
+
                 return UnpublishedSchedulesResponseDTO.builder()
-                                .count(scheduleDTOs.size())
-                                .overallFairnessScore(evaluation.getOverallFairnessScore())
-                                .schedules(scheduleDTOs)
+                                .count(allDTOs.size())
+                                .overallFairnessScore(aggregateOverall)
+                                .schedules(allDTOs)
                                 .build();
+        }
+
+        /**
+         * Helper: determines whether a user (by ID) belongs to the given team.
+         * Used when filtering individual fairness scores by team in stored run data.
+         * Simple lookup via UserRepository to avoid holding extra maps.
+         */
+        private boolean teamBelongsToMember(Long userId, Long teamId) {
+                 return userRepository.findById(userId)
+                                 .map(u -> u.getTeam() != null && u.getTeam().getId().equals(teamId))
+                                 .orElse(false);
+        }
+
+        /**
+         * Helper: builds UserScheduleDTO list with day-by-day generated schedule entries
+         * for members of a team in an unpublished draft schedule.
+         */
+        private List<UserScheduleDTO> buildUserSchedulesForDraft(
+                        Schedule schedule,
+                        Map<Long, List<User>> usersByTeamId,
+                        Map<Long, List<ScheduleEntry>> entriesByScheduleId) {
+
+                Long teamId = schedule.getTeam().getId();
+                List<User> teamMembers = usersByTeamId.getOrDefault(teamId, List.of());
+                List<ScheduleEntry> scheduleEntries = entriesByScheduleId.getOrDefault(schedule.getId(), List.of());
+
+                Map<Long, List<ScheduleEntry>> entriesByUserId = scheduleEntries.stream()
+                                .collect(Collectors.groupingBy(se -> se.getUser().getId()));
+
+                List<UserScheduleDTO> memberDtos = new ArrayList<>();
+                for (User member : teamMembers) {
+                        List<ScheduleEntry> userEntries = entriesByUserId.getOrDefault(member.getId(), List.of());
+
+                        List<ScheduleEntryDTO> entryDtos = userEntries.stream()
+                                        .map(se -> new ScheduleEntryDTO(se.getId(), se.getDate(), se.getWorkMode()))
+                                        .sorted(Comparator.comparing(ScheduleEntryDTO::getDate))
+                                        .toList();
+
+                        String firstName = member.getProfile() != null ? member.getProfile().getFirstName() : null;
+                        String lastName = member.getProfile() != null ? member.getProfile().getLastName() : null;
+
+                        memberDtos.add(new UserScheduleDTO(
+                                        member.getId(),
+                                        member.getEmail(),
+                                        firstName,
+                                        lastName,
+                                        member.getRole().name(),
+                                        entryDtos
+                        ));
+                }
+
+                // Sort: manager first, then alphabetically by email
+                memberDtos.sort(Comparator
+                                .comparing((UserScheduleDTO u) -> !"MANAGER".equals(u.getRoleName()))
+                                .thenComparing(UserScheduleDTO::getEmail));
+
+                return memberDtos;
         }
 
         // -------------------------------------------------------------------------

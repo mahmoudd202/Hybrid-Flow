@@ -8,6 +8,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.example.hybridflow.dto.ApiErrorResponse;
 
@@ -88,9 +89,9 @@ public class GlobalExceptionHandler {
         );
     }
 
-    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiErrorResponse> handleDataIntegrity(
-            org.springframework.dao.DataIntegrityViolationException ex,
+            DataIntegrityViolationException ex,
             HttpServletRequest request
     ) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(

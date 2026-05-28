@@ -8,7 +8,9 @@ import org.springframework.stereotype.Repository;
 
 import com.example.hybridflow.entity.Request;
 import com.example.hybridflow.entity.RequestStatus;
+import com.example.hybridflow.entity.RequestType;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.Query;
@@ -30,7 +32,7 @@ public interface RequestRepository extends JpaRepository<Request, Long> {
     List<Request> findByCompanyIdAndStatus(Long companyId, RequestStatus status);
 
     // For duplicate/overlap detection
-    List<Request> findByRequesterIdAndStatusAndType(Long requesterId, RequestStatus status, com.example.hybridflow.entity.RequestType type);
+    List<Request> findByRequesterIdAndStatusAndType(Long requesterId, RequestStatus status, RequestType type);
 
     @Query("""
         select r from Request r
@@ -47,10 +49,10 @@ public interface RequestRepository extends JpaRepository<Request, Long> {
     List<Request> findCompanyRequestHistoryWithFilters(
         @Param("companyId") Long companyId,
         @Param("status") RequestStatus status,
-        @Param("type") com.example.hybridflow.entity.RequestType type,
+        @Param("type") RequestType type,
         @Param("requesterId") Long requesterId,
-        @Param("startDate") java.time.LocalDate startDate,
-        @Param("endDate") java.time.LocalDate endDate
+        @Param("startDate") LocalDate startDate,
+        @Param("endDate") LocalDate endDate
     );
 }
 

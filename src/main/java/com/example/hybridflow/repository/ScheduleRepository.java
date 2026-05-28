@@ -100,4 +100,13 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
           order by t.name asc, s.startDate asc
       """)
   List<Schedule> findAllUnpublishedByCompanyId(@Param("companyId") Long companyId);
+
+  // ── Optimization run link ─────────────────────────────────────────────────
+
+  /**
+   * Finds all schedules produced by a given optimization run.
+   * Used by ScheduleOptimizationRunService to build the scheduleIds list in
+   * OptimizationRunDTO.
+   */
+  List<Schedule> findByOptimizationRunId(Long optimizationRunId);
 }

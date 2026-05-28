@@ -9,6 +9,7 @@ import com.example.hybridflow.entity.User;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,7 +24,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
                             left join fetch u.company
                             where u.email in :emails
                         """)
-        List<User> findByEmailInWithCompany(@Param("emails") java.util.Collection<String> emails);
+        List<User> findByEmailInWithCompany(@Param("emails") Collection<String> emails);
 
         Optional<User> findByProviderAndProviderId(
                         AuthProvider provider,

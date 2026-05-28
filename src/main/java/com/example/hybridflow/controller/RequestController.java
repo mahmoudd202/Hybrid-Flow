@@ -9,9 +9,11 @@ import org.springframework.web.bind.annotation.*;
 import com.example.hybridflow.dto.RequestResponseDTO;
 import com.example.hybridflow.dto.RequestSubmissionDTO;
 import com.example.hybridflow.entity.RequestStatus;
+import com.example.hybridflow.entity.RequestType;
 import com.example.hybridflow.security.CustomUserDetails;
 import com.example.hybridflow.service.RequestService;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -83,10 +85,10 @@ public class RequestController {
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<List<RequestResponseDTO>> getRequestHistory(
             @RequestParam(required = false) RequestStatus status,
-            @RequestParam(required = false) com.example.hybridflow.entity.RequestType type,
+            @RequestParam(required = false) RequestType type,
             @RequestParam(required = false) Long requesterId,
-            @RequestParam(required = false) java.time.LocalDate startDate,
-            @RequestParam(required = false) java.time.LocalDate endDate,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         if (userDetails == null) return ResponseEntity.status(401).build();

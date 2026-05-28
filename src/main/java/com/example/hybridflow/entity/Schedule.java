@@ -27,4 +27,14 @@ public class Schedule {
     private boolean published = false; // HR flips this to true to make it visible to employees
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    /**
+     * The optimization run that generated this schedule.
+     * Null for seeded/legacy schedules and schedules created before this feature.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "optimization_run_id")
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private ScheduleOptimizationRun optimizationRun;
 }

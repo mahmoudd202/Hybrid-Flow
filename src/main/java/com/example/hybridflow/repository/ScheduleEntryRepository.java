@@ -114,5 +114,13 @@ public interface ScheduleEntryRepository extends JpaRepository<ScheduleEntry, Lo
   List<ScheduleEntry> findByScheduleIdInWithScheduleAndOffice(
       @Param("scheduleIds") List<Long> scheduleIds);
 
-
+  @Query("""
+          select se from ScheduleEntry se
+          join fetch se.schedule s
+          join fetch se.user u
+          left join fetch u.profile p
+          where s.id in :scheduleIds
+          order by u.id asc, se.date asc
+      """)
+  List<ScheduleEntry> findDraftEntriesByScheduleIds(@Param("scheduleIds") List<Long> scheduleIds);
 }
