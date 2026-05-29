@@ -190,11 +190,10 @@ public class PreferredWorkDayService {
                 continue;
             }
 
+            boolean limited = false;
             if (dayList.size() > 2) {
-                rowDto.setValid(false);
-                rowDto.setErrorMessage("Maximum 2 preferred days allowed");
-                invalidCount++;
-                continue;
+                dayList = new ArrayList<>(dayList.subList(0, 2));
+                limited = true;
             }
 
             try {
@@ -213,6 +212,10 @@ public class PreferredWorkDayService {
 
                 rowDto.setValid(true);
                 rowDto.setSaved(true);
+                if (limited) {
+                    rowDto.setErrorMessage("Saved first 2 chosen days because of the limit of 2 days");
+                    rowDto.setPreferredDays(dayList);
+                }
                 validCount++;
                 savedCount++;
             } catch (IllegalArgumentException e) {
