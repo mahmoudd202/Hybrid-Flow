@@ -17,6 +17,7 @@ public class EmailService {
         this.mailSender = mailSender;
     }
 
+    @Async("emailExecutor")
     public void sendOtpEmail(String to, String otp) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
@@ -24,26 +25,22 @@ public class EmailService {
         message.setText(
                 "Your verification code is: " + otp +
                         "\nThis code expires in 10 minutes.");
-        mailSender.send(message);
+        sendEmailWithRetry(message, "verification OTP to " + to);
     }
 
-    @Async
+    @Async("emailExecutor")
     public void sendInvitationEmail(String to, String role) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(to);
-            message.setSubject("Invitation to join the Hybrid Work System");
-            message.setText(
-                    "You have been invited as a " + role + ".\n\n" +
-                            "Please go to the system and sign in with your email to complete your registration.\n" +
-                            "An OTP will be sent to you during the sign-in process for verification.");
-            mailSender.send(message);
-            log.info("Successfully sent invitation email to {} as role {}", to, role);
-        } catch (Exception e) {
-            log.error("Failed to send invitation email to {} as role {}: {}", to, role, e.getMessage(), e);
-        }
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(to);
+        message.setSubject("Invitation to join the Hybrid Work System");
+        message.setText(
+                "You have been invited as a " + role + ".\n\n" +
+                        "Please go to the system and sign in with your email to complete your registration.\n" +
+                        "An OTP will be sent to you during the sign-in process for verification.");
+        sendEmailWithRetry(message, "invitation email to " + to + " as role " + role);
     }
 
+    @Async("emailExecutor")
     public void sendForgotPasswordEmail(String to, String otp) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
@@ -52,6 +49,31 @@ public class EmailService {
                 "You requested a password reset.\n" +
                         "Your verification code is: " + otp + "\n" +
                         "This code expires in 10 minutes.");
-        mailSender.send(message);
+        sendEmailWithRetry(message, "password reset OTP to " + to);
+    }
+
+    private void sendEmailWithRetry(SimpleMailMessage message, String description) {
+        int maxRetries = 3;
+        long delayMs = 1000;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                mailSender.send(message);
+                log.info("Successfully sent {}", description);
+                return;
+            } catch (Exception e) {
+                log.warn("Failed to send {} (attempt {}/{}): {}", description, attempt, maxRetries, e.getMessage());
+                if (attempt == maxRetries) {
+                    log.error("Failed to send {} after {} attempts", description, maxRetries, e);
+                } else {
+                    try {
+                        Thread.sleep(delayMs * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        log.error("Email sending interrupted for {}", description, ie);
+                        return;
+                    }
+                }
+            }
+        }
     }
 }
