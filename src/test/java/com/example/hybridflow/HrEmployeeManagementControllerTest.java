@@ -459,4 +459,26 @@ class HrEmployeeManagementControllerTest {
                         .header("Authorization", "Bearer " + hrToken))
                 .andExpect(status().is4xxClientError());
     }
+
+    // -----------------------------------------------------------------------
+    // Team management — list company teams
+    // -----------------------------------------------------------------------
+
+    @Test
+    void getTeamsByCompanyReturnsAllTeamsOfCompany() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/teams/company")
+                        .header("Authorization", "Bearer " + hrToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(response.isArray()).isTrue();
+        assertThat(response.size()).isGreaterThanOrEqualTo(2);
+
+        // Verify structure
+        JsonNode firstTeam = response.get(0);
+        assertThat(firstTeam.has("id")).isTrue();
+        assertThat(firstTeam.has("name")).isTrue();
+        assertThat(firstTeam.has("companyId")).isTrue();
+    }
 }

@@ -49,6 +49,19 @@ public class TeamController {
         return ResponseEntity.ok(teams);
     }
 
+    @GetMapping("/company")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<List<TeamResponseDTO>> getTeamsByCompany(
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        List<TeamResponseDTO> teams = teamService.getTeamsByCompany(userDetails.getUser());
+        return ResponseEntity.ok(teams);
+    }
+
     @PutMapping("/{teamId}")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<TeamResponseDTO> updateTeam(

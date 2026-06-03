@@ -35,7 +35,7 @@ public class ScheduleOptimizationRun {
     private OptimizationJobStatus jobStatus;
 
     /** Populated only when jobStatus = FAILED. */
-    @Column(name = "error_message", length = 1000)
+    @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
     // ── Ownership ─────────────────────────────────────────────────────────────

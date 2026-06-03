@@ -88,6 +88,20 @@ public class TeamService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<TeamResponseDTO> getTeamsByCompany(User hrUser) {
+        Company company = hrUser.getCompany();
+        if (company == null) {
+            throw new BusinessValidationException("HR user is not assigned to a company.");
+        }
+
+        List<Team> teams = teamRepository.findByCompanyIdOrderByNameAsc(company.getId());
+
+        return teams.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public TeamResponseDTO updateTeam(Long teamId, TeamCreateRequestDTO dto, User hrUser) {
         Company company = hrUser.getCompany();

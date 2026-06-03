@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.test.annotation.DirtiesContext;
 
 import com.example.hybridflow.repository.OfficeRepository;
 import com.example.hybridflow.repository.PlanningPolicyRepository;
@@ -44,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class ScheduleGenerationControllerTest {
 
     @Autowired WebApplicationContext webApplicationContext;
@@ -90,9 +92,17 @@ class ScheduleGenerationControllerTest {
         seededPolicyId = planningPolicyRepository.findAll().get(0).getId();
 
         // Future date ranges: both are outside the 4-week seeded schedule window
+        // Align to Monday to ensure the test range is exactly 1 full week (Monday-Friday), which is always feasible
         publishRangeStart = LocalDate.now().plusWeeks(6);
+        while (publishRangeStart.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+            publishRangeStart = publishRangeStart.plusDays(1);
+        }
         publishRangeEnd   = publishRangeStart.plusDays(4);
+
         discardRangeStart = LocalDate.now().plusWeeks(8);
+        while (discardRangeStart.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+            discardRangeStart = discardRangeStart.plusDays(1);
+        }
         discardRangeEnd   = discardRangeStart.plusDays(4);
 
         // Clean up any leftover unpublished drafts so each test starts fresh

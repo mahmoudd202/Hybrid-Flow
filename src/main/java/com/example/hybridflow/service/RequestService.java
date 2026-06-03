@@ -53,8 +53,22 @@ public class RequestService {
         validateAuthenticatedUser(currentUser);
         validateSubmission(dto);
 
+        List<Request> existingRequests = requestRepository.findByRequesterId(currentUser.getId());
+
+        // Limit requests to 5 per month per user
+        LocalDate now = LocalDate.now();
+        long requestsThisMonth = existingRequests.stream()
+                .filter(r -> r.getCreatedAt() != null
+                        && r.getCreatedAt().getMonth() == now.getMonth()
+                        && r.getCreatedAt().getYear() == now.getYear())
+                .count();
+
+        if (requestsThisMonth >= 5) {
+            throw new BusinessValidationException("You have reached the limit of 5 requests per month.");
+        }
+
         // Validate that the user has published schedule entries for the requested dates
-        // and is not already OFF for those dates (unless it\'s a WFH request on an OFFICE day)
+        // and is not already OFF for those dates (unless it's a WFH request on an OFFICE day)
         LocalDate currentDate = dto.getStartDate();
         while (!currentDate.isAfter(dto.getEndDate())) {
             LocalDate finalCurrentDate = currentDate;
@@ -82,7 +96,6 @@ public class RequestService {
          * - User cannot create a new request overlapping an already APPROVED request.
          * - REJECTED requests do not block new requests.
          */
-        List<Request> existingRequests = requestRepository.findByRequesterId(currentUser.getId());
 
         for (Request existing : existingRequests) {
             if (existing.getStatus() == RequestStatus.REJECTED) {

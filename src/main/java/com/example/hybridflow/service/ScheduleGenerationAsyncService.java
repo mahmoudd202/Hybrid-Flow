@@ -302,10 +302,199 @@ public class ScheduleGenerationAsyncService {
             run.setGurobiStatusLabel(resolveStatusLabel(status));
 
             if (status != GRB.OPTIMAL) {
-                String message = status == GRB.INFEASIBLE
-                        ? "Model is infeasible. The selected policy constraints cannot all be "
-                        + "satisfied for the chosen teams, office capacity, and date range."
-                        : "Gurobi did not find an optimal solution. Status code: " + status;
+                String message;
+                if (status == GRB.INFEASIBLE) {
+                    try {
+                        model.computeIIS();
+                        GRBConstr[] constrs = model.getConstrs();
+
+                        List<String> capacityDates = new ArrayList<>();
+                        Map<String, List<String>> minOfficeByWeek = new LinkedHashMap<>();
+                        Map<String, List<String>> maxOfficeByWeek = new LinkedHashMap<>();
+                        List<String> consecutiveUsers = new ArrayList<>();
+                        List<String> teamSharedDaysIssues = new ArrayList<>();
+                        Map<String, List<String>> coPresenceIssues = new LinkedHashMap<>();
+                        List<String> dateRangeWarnings = new ArrayList<>();
+
+                        Map<Long, User> userMap = users.stream().collect(Collectors.toMap(User::getId, u -> u));
+                        Map<Long, Team> teamMap = teams.stream().collect(Collectors.toMap(Team::getId, t -> t));
+
+                        for (GRBConstr constr : constrs) {
+                            if (constr.get(GRB.IntAttr.IISConstr) > 0) {
+                                String name = constr.get(GRB.StringAttr.ConstrName);
+                                if (name == null) continue;
+
+                                if (name.startsWith("Capacity_")) {
+                                    String dateStr = name.substring("Capacity_".length());
+                                    capacityDates.add(dateStr);
+                                } else if (name.startsWith("MinOffice_")) {
+                                    String details = name.substring("MinOffice_".length());
+                                    if (details.startsWith("User_")) {
+                                        String sub = details.substring("User_".length());
+                                        int underscoreIdx = sub.indexOf('_');
+                                        if (underscoreIdx != -1) {
+                                            String userIdStr = sub.substring(0, underscoreIdx);
+                                            String weekKey = sub.substring(underscoreIdx + 1);
+                                            try {
+                                                Long userId = Long.parseLong(userIdStr);
+                                                User user = userMap.get(userId);
+                                                String emailDisplay = user != null ? user.getEmail() : "User ID " + userId;
+                                                List<LocalDate> weekDates = datesByWeek.get(weekKey);
+                                                int weekDatesCount = weekDates != null ? weekDates.size() : 0;
+
+                                                if (weekDatesCount < policy.getMinOfficeDaysPerWeek()) {
+                                                    dateRangeWarnings.add(String.format(
+                                                        "Week %s only has %d working day(s) in the selected date range, which is less than the required %d office days per week (conflict for %s).",
+                                                        weekKey, weekDatesCount, policy.getMinOfficeDaysPerWeek(), emailDisplay
+                                                    ));
+                                                } else {
+                                                    minOfficeByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>()).add(emailDisplay);
+                                                }
+                                            } catch (NumberFormatException ignored) {}
+                                        }
+                                    }
+                                } else if (name.startsWith("MaxOffice_")) {
+                                    String details = name.substring("MaxOffice_".length());
+                                    if (details.startsWith("User_")) {
+                                        String sub = details.substring("User_".length());
+                                        int underscoreIdx = sub.indexOf('_');
+                                        if (underscoreIdx != -1) {
+                                            String userIdStr = sub.substring(0, underscoreIdx);
+                                            String weekKey = sub.substring(underscoreIdx + 1);
+                                            try {
+                                                Long userId = Long.parseLong(userIdStr);
+                                                User user = userMap.get(userId);
+                                                String emailDisplay = user != null ? user.getEmail() : "User ID " + userId;
+                                                maxOfficeByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>()).add(emailDisplay);
+                                            } catch (NumberFormatException ignored) {}
+                                        }
+                                    }
+                                } else if (name.startsWith("MaxConsecutive_")) {
+                                    String details = name.substring("MaxConsecutive_".length());
+                                    if (details.startsWith("User_")) {
+                                        String sub = details.substring("User_".length());
+                                        int underscoreIdx = sub.indexOf('_');
+                                        if (underscoreIdx != -1) {
+                                            String userIdStr = sub.substring(0, underscoreIdx);
+                                            try {
+                                                Long userId = Long.parseLong(userIdStr);
+                                                User user = userMap.get(userId);
+                                                String emailDisplay = user != null ? user.getEmail() : "User ID " + userId;
+                                                consecutiveUsers.add(emailDisplay);
+                                            } catch (NumberFormatException ignored) {}
+                                        }
+                                    }
+                                } else if (name.startsWith("MinSharedDays_Team_")) {
+                                    String teamIdStr = name.substring("MinSharedDays_Team_".length());
+                                    try {
+                                        Long teamId = Long.parseLong(teamIdStr);
+                                        Team team = teamMap.get(teamId);
+                                        String teamName = team != null ? team.getName() : "Team ID " + teamId;
+                                        teamSharedDaysIssues.add(teamName);
+                                    } catch (NumberFormatException ignored) {}
+                                } else if (name.startsWith("CoPresenceLower_") || name.startsWith("CoPresenceUpper_")) {
+                                    boolean isLower = name.startsWith("CoPresenceLower_");
+                                    String details = name.substring(isLower ? "CoPresenceLower_".length() : "CoPresenceUpper_".length());
+                                    int underscore = details.indexOf('_');
+                                    if (underscore != -1) {
+                                        String teamIdStr = details.substring(0, underscore);
+                                        String dateStr = details.substring(underscore + 1);
+                                        try {
+                                            Long teamId = Long.parseLong(teamIdStr);
+                                            Team team = teamMap.get(teamId);
+                                            String teamName = team != null ? team.getName() : "Team ID " + teamId;
+                                            String label = isLower ? "minimum copresence limit" : "maximum copresence limit";
+                                            coPresenceIssues.computeIfAbsent(dateStr, k -> new ArrayList<>()).add(String.format("'%s' (%s)", teamName, label));
+                                        } catch (NumberFormatException ignored) {}
+                                    }
+                                }
+                            }
+                        }
+
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("Schedule generation is not possible because the requirements conflict with each other. Here is what is causing the issue:\n");
+                        boolean hasIssue = false;
+
+                        if (!dateRangeWarnings.isEmpty()) {
+                            hasIssue = true;
+                            sb.append("\n- Date Range / Calendar Alignment:\n");
+                            List<String> uniqueWarnings = dateRangeWarnings.stream().distinct().sorted().collect(Collectors.toList());
+                            for (String warn : uniqueWarnings) {
+                                sb.append("  * ").append(warn).append("\n");
+                            }
+                        }
+
+                        if (!capacityDates.isEmpty()) {
+                            hasIssue = true;
+                            sb.append(String.format("\n- Office Capacity Limits (Max %d):\n", office.getMaxCapacity()));
+                            List<String> uniqueDates = capacityDates.stream().distinct().sorted().collect(Collectors.toList());
+                            sb.append("  * Capacity constraint is too restrictive on: ").append(String.join(", ", uniqueDates)).append("\n");
+                        }
+
+                        if (!minOfficeByWeek.isEmpty()) {
+                            hasIssue = true;
+                            sb.append(String.format("\n- Weekly Minimum Office Days (%d days required):\n", policy.getMinOfficeDaysPerWeek()));
+                            List<String> sortedWeekKeys = minOfficeByWeek.keySet().stream().sorted().collect(Collectors.toList());
+                            for (String weekKey : sortedWeekKeys) {
+                                List<String> userEmails = minOfficeByWeek.get(weekKey);
+                                if (userEmails != null && !userEmails.isEmpty()) {
+                                    List<String> uniqueEmails = userEmails.stream().distinct().sorted().collect(Collectors.toList());
+                                    sb.append("  * In week ").append(weekKey).append(" for: ")
+                                      .append(String.join(", ", uniqueEmails)).append("\n");
+                                }
+                            }
+                        }
+
+                        if (!maxOfficeByWeek.isEmpty()) {
+                            hasIssue = true;
+                            sb.append(String.format("\n- Weekly Maximum Office Days (Max %d days allowed):\n", policy.getMaxOfficeDaysPerWeek()));
+                            List<String> sortedWeekKeys = maxOfficeByWeek.keySet().stream().sorted().collect(Collectors.toList());
+                            for (String weekKey : sortedWeekKeys) {
+                                List<String> userEmails = maxOfficeByWeek.get(weekKey);
+                                if (userEmails != null && !userEmails.isEmpty()) {
+                                    List<String> uniqueEmails = userEmails.stream().distinct().sorted().collect(Collectors.toList());
+                                    sb.append("  * In week ").append(weekKey).append(" for: ")
+                                      .append(String.join(", ", uniqueEmails)).append("\n");
+                                }
+                            }
+                        }
+
+                        if (!consecutiveUsers.isEmpty()) {
+                            hasIssue = true;
+                            sb.append(String.format("\n- Maximum Consecutive Office Days (Max %d days allowed):\n", policy.getMaxConsecutiveOfficeDays()));
+                            List<String> uniqueUsers = consecutiveUsers.stream().distinct().sorted().collect(Collectors.toList());
+                            sb.append("  * Constraint violated for: ").append(String.join(", ", uniqueUsers)).append("\n");
+                        }
+
+                        if (!teamSharedDaysIssues.isEmpty()) {
+                            hasIssue = true;
+                            sb.append(String.format("\n- Minimum Team Shared Days (%d days required):\n", policy.getMinTeamSharedDays()));
+                            List<String> uniqueTeams = teamSharedDaysIssues.stream().distinct().sorted().collect(Collectors.toList());
+                            sb.append("  * The following teams could not meet this requirement: ").append(String.join(", ", uniqueTeams)).append("\n");
+                        }
+
+                        if (!coPresenceIssues.isEmpty()) {
+                            hasIssue = true;
+                            sb.append("\n- Team Co-Presence Thresholds:\n");
+                            List<String> sortedDates = coPresenceIssues.keySet().stream().sorted().collect(Collectors.toList());
+                            for (String d : sortedDates) {
+                                List<String> issues = coPresenceIssues.get(d).stream().distinct().sorted().collect(Collectors.toList());
+                                sb.append("  * On ").append(d).append(": ").append(String.join(", ", issues)).append("\n");
+                            }
+                        }
+
+                        if (!hasIssue) {
+                            message = "Model is infeasible. The selected policy constraints cannot all be satisfied for the chosen teams, office capacity, and date range.";
+                        } else {
+                            message = sb.toString().trim();
+                        }
+                    } catch (Exception iisEx) {
+                        log.error("Failed to compute or parse Gurobi IIS: {}", iisEx.getMessage(), iisEx);
+                        message = "Model is infeasible. The selected policy constraints cannot all be satisfied. (IIS computation failed: " + iisEx.getMessage() + ")";
+                    }
+                } else {
+                    message = "Gurobi did not find an optimal solution. Status code: " + status;
+                }
 
                 // Persist stat we have (status) before marking failed
                 runRepository.save(run);

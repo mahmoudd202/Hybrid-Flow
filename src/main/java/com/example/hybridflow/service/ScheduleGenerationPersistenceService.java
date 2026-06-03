@@ -137,6 +137,9 @@ public class ScheduleGenerationPersistenceService {
     @Transactional
     public void markFailed(ScheduleOptimizationRun run, String errorMessage) {
         run.setJobStatus(OptimizationJobStatus.FAILED);
+        if (errorMessage != null && errorMessage.length() > 1000) {
+            errorMessage = errorMessage.substring(0, 997) + "...";
+        }
         run.setErrorMessage(errorMessage);
         run.setCompletedAt(LocalDateTime.now());
         runRepository.save(run);

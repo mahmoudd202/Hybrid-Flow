@@ -263,4 +263,35 @@ class EmployeeExperienceControllerTest {
         assertThat(prefs.has("preferredDays")).isTrue();
         assertThat(prefs.get("preferredDays").size()).isEqualTo(2);
     }
+
+    @Test
+    void createRequestExceedsMonthlyLimitThrowsException() throws Exception {
+        com.example.hybridflow.entity.Company company = userRepository.findById(dev1Id).orElseThrow().getCompany();
+
+        for (int i = 0; i < 5; i++) {
+            com.example.hybridflow.entity.Request dummy = new com.example.hybridflow.entity.Request();
+            dummy.setRequester(userRepository.findById(dev1Id).orElseThrow());
+            dummy.setCompany(company);
+            dummy.setType(com.example.hybridflow.entity.RequestType.WFH);
+            dummy.setStartDate(LocalDate.now().plusDays(100 + i));
+            dummy.setEndDate(LocalDate.now().plusDays(100 + i));
+            dummy.setReason("Dummy request " + i);
+            dummy.setStatus(com.example.hybridflow.entity.RequestStatus.PENDING);
+            requestRepository.save(dummy);
+        }
+
+        String body = objectMapper.writeValueAsString(Map.of(
+                "type", "WFH",
+                "startDate", wfhDate.toString(),
+                "endDate", wfhDate.toString(),
+                "reason", "This should fail because limit is 5"
+        ));
+
+        mockMvc.perform(post("/api/requests")
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("You have reached the limit of 5 requests per month."));
+    }
 }
