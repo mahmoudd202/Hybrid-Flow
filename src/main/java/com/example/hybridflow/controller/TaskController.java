@@ -82,7 +82,7 @@ public class TaskController {
     }
 
     @PutMapping("/{taskId}")
-    @PreAuthorize("hasRole('MANAGER')")
+    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
     public ResponseEntity<TaskDetailsResponseDTO> updateTask(
             @PathVariable Long taskId,
             @Valid @RequestBody TaskUpdateRequestDTO dto,

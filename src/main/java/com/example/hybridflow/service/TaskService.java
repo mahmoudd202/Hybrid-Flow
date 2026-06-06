@@ -121,11 +121,11 @@ public class TaskService {
         TaskAssignment assignment = taskAssignmentRepository.findDetailedById(assignmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Backlog item not found"));
 
-        if (assignment.getStatus() != TaskAssignmentStatus.BACKLOG) {
-            throw new BusinessValidationException("Only BACKLOG items can be deleted through this endpoint");
+        if (assignment.getTask().getTargetType() == TaskTargetType.TEAM) {
+            throw new BusinessValidationException("Team tasks cannot be deleted through this endpoint");
         }
 
-        if (!assignment.getAssignee().getId().equals(user.getId())) {
+        if (!assignment.getTask().getCreatedBy().getId().equals(user.getId())) {
             throw new AccessDeniedException("You can only delete your own backlog items");
         }
 
@@ -152,14 +152,20 @@ public class TaskService {
     }
 
     @Transactional
-    public TaskDetailsResponseDTO updateTask(Long taskId, TaskUpdateRequestDTO dto, User manager) {
-        validateManagerContext(manager);
+    public TaskDetailsResponseDTO updateTask(Long taskId, TaskUpdateRequestDTO dto, User user) {
+        if (user == null) {
+            throw new AccessDeniedException("Unauthenticated");
+        }
 
         Task task = taskRepository.findWithDetailsById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
 
-        if (!task.getCreatedBy().getId().equals(manager.getId())) {
+        if (!task.getCreatedBy().getId().equals(user.getId())) {
             throw new AccessDeniedException("You can only edit tasks you created");
+        }
+
+        if (user.getRole() == Role.MANAGER) {
+            validateManagerContext(user);
         }
 
         List<String> excludedAssignees = List.of();

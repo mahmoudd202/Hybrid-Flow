@@ -21,6 +21,7 @@ import org.springframework.web.context.WebApplicationContext;
 import com.example.hybridflow.entity.WorkMode;
 import com.example.hybridflow.repository.ScheduleEntryRepository;
 import com.example.hybridflow.repository.TaskAssignmentRepository;
+import com.example.hybridflow.repository.TaskRepository;
 import com.example.hybridflow.repository.RequestRepository;
 import com.example.hybridflow.repository.UserRepository;
 
@@ -47,6 +48,7 @@ class EmployeeExperienceControllerTest {
 
     @Autowired WebApplicationContext webApplicationContext;
     @Autowired TaskAssignmentRepository taskAssignmentRepository;
+    @Autowired TaskRepository taskRepository;
     @Autowired RequestRepository requestRepository;
     @Autowired UserRepository userRepository;
     @Autowired ScheduleEntryRepository scheduleEntryRepository;
@@ -181,6 +183,114 @@ class EmployeeExperienceControllerTest {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
+    }
+
+    @Test
+    void createAndDeleteBacklogTask() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of(
+                "title", "My Backlog Task",
+                "description", "A task for my backlog",
+                "dueDate", java.time.LocalDateTime.now().plusDays(5).toString()
+        ));
+
+        // Create backlog task as dev1
+        MvcResult createResult = mockMvc.perform(post("/api/tasks/backlog")
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        JsonNode response = objectMapper.readTree(createResult.getResponse().getContentAsString());
+        long assignmentId = response.get("assignmentId").asLong();
+        long taskId = response.get("taskId").asLong();
+
+        // Attempt to delete it as manager.a -> expect 403 Forbidden
+        String managerLoginBody = objectMapper.writeValueAsString(
+                Map.of("email", "manager.a@techflow.com", "password", "password123"));
+
+        MvcResult managerLoginResult = mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(managerLoginBody))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String managerToken = objectMapper.readTree(managerLoginResult.getResponse().getContentAsString())
+                .get("accessToken").asText();
+
+        mockMvc.perform(delete("/api/tasks/backlog/" + assignmentId)
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isForbidden());
+
+        // Update backlog task assignment status to IN_PROGRESS
+        String updateStatusBody = objectMapper.writeValueAsString(Map.of("status", "IN_PROGRESS"));
+        mockMvc.perform(patch("/api/tasks/assignments/" + assignmentId + "/status")
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateStatusBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
+
+        // Delete it as dev1 (the creator/assignee) -> expect 204 No Content even if status is IN_PROGRESS
+        mockMvc.perform(delete("/api/tasks/backlog/" + assignmentId)
+                        .header("Authorization", "Bearer " + employeeToken))
+                .andExpect(status().isNoContent());
+
+        // Verify task assignment and task are gone
+        assertThat(taskAssignmentRepository.findById(assignmentId)).isEmpty();
+        assertThat(taskRepository.findById(taskId)).isEmpty();
+    }
+
+    @Test
+    void editOwnTaskAndFailOnOthers() throws Exception {
+        // Find a task created by someone else (e.g. manager.a)
+        Long managerTaskId = taskRepository.findAll().stream()
+                .filter(t -> !"dev1@techflow.com".equals(t.getCreatedBy().getEmail()))
+                .findFirst().orElseThrow().getId();
+
+        String updateBody = objectMapper.writeValueAsString(Map.of(
+                "title", "Hacked Title",
+                "description", "Hacked description",
+                "dueDate", wfhDate.atTime(12, 0).toString()
+        ));
+
+        // Attempt to edit others' task as dev1 -> expect 403 Forbidden
+        mockMvc.perform(put("/api/tasks/" + managerTaskId)
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody))
+                .andExpect(status().isForbidden());
+
+        // Create backlog task as dev1
+        String createBody = objectMapper.writeValueAsString(Map.of(
+                "title", "My Backlog Task to Edit",
+                "description", "Original description",
+                "dueDate", wfhDate.atTime(12, 0).toString()
+        ));
+
+        MvcResult createResult = mockMvc.perform(post("/api/tasks/backlog")
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        JsonNode response = objectMapper.readTree(createResult.getResponse().getContentAsString());
+        long ownTaskId = response.get("taskId").asLong();
+
+        // Edit own task as dev1 -> expect 200 OK
+        String ownUpdateBody = objectMapper.writeValueAsString(Map.of(
+                "title", "Updated Own Task Title",
+                "description", "Updated description",
+                "dueDate", wfhDate.atTime(12, 0).toString()
+        ));
+
+        mockMvc.perform(put("/api/tasks/" + ownTaskId)
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ownUpdateBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.task.title").value("Updated Own Task Title"));
     }
 
     // -----------------------------------------------------------------------

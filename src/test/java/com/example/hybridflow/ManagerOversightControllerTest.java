@@ -195,6 +195,90 @@ class ManagerOversightControllerTest {
                 .andExpect(jsonPath("$.task.title").value("Write unit tests"));
     }
 
+    @Test
+    void deleteTaskDeletesTaskAndItsAssignments() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of(
+                "title", "Temporary Task to Delete",
+                "description", "Delete this task",
+                "targetType", "INDIVIDUAL",
+                "assigneeId", dev1Id,
+                "dueDate", taskDueDate.toString()
+        ));
+
+        MvcResult createResult = mockMvc.perform(post("/api/tasks")
+                        .header("Authorization", "Bearer " + managerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode response = objectMapper.readTree(createResult.getResponse().getContentAsString());
+        long newTaskId = response.get("task").get("id").asLong();
+
+        // Verify assignment was created
+        List<com.example.hybridflow.entity.TaskAssignment> assignmentsBefore = taskAssignmentRepository.findAllByTaskId(newTaskId);
+        assertThat(assignmentsBefore).hasSize(1);
+
+        // Delete the task
+        mockMvc.perform(delete("/api/tasks/" + newTaskId)
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isNoContent());
+
+        // Verify task is deleted
+        assertThat(taskRepository.findById(newTaskId)).isEmpty();
+
+        // Verify assignments are deleted
+        List<com.example.hybridflow.entity.TaskAssignment> assignmentsAfter = taskAssignmentRepository.findAllByTaskId(newTaskId);
+        assertThat(assignmentsAfter).isEmpty();
+    }
+
+    @Test
+    void deleteTaskReturns404IfNotFound() throws Exception {
+        mockMvc.perform(delete("/api/tasks/999999")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteTaskReturns403IfNotCreator() throws Exception {
+        // Create a task as manager.a
+        String body = objectMapper.writeValueAsString(Map.of(
+                "title", "Manager A Task",
+                "description", "Delete this task",
+                "targetType", "INDIVIDUAL",
+                "assigneeId", dev1Id,
+                "dueDate", taskDueDate.toString()
+        ));
+
+        MvcResult createResult = mockMvc.perform(post("/api/tasks")
+                        .header("Authorization", "Bearer " + managerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode response = objectMapper.readTree(createResult.getResponse().getContentAsString());
+        long newTaskId = response.get("task").get("id").asLong();
+
+        // Login as manager.b
+        String loginBody = objectMapper.writeValueAsString(
+                Map.of("email", "manager.b@techflow.com", "password", "password123"));
+
+        MvcResult loginResult = mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String managerBToken = objectMapper.readTree(loginResult.getResponse().getContentAsString())
+                .get("accessToken").asText();
+
+        // Attempt to delete manager.a's task as manager.b -> expect 403 Forbidden
+        mockMvc.perform(delete("/api/tasks/" + newTaskId)
+                        .header("Authorization", "Bearer " + managerBToken))
+                .andExpect(status().isForbidden());
+    }
+
     // -----------------------------------------------------------------------
     // Meetings — full CRUD cycle
     // -----------------------------------------------------------------------
