@@ -33,7 +33,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
           select distinct m from Meeting m
           join fetch m.office o
           join fetch m.host h
-          join fetch m.participatingTeams t
+          join fetch m.participatingTeams pt
+          join m.participatingTeams t
           where t.id = :teamId
           order by m.startTime asc
       """)
@@ -44,7 +45,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
           join fetch m.office o
           join fetch m.host h
           join fetch m.participatingTeams pt
-          where pt.id = :teamId
+          join m.participatingTeams t
+          where t.id = :teamId
             and m.startTime < :rangeEnd
             and m.endTime > :rangeStart
           order by m.startTime asc
@@ -57,7 +59,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
           join fetch m.office o
           join fetch m.host h
           join fetch m.participatingTeams pt
-          where pt.company.id = :companyId
+          join m.participatingTeams t
+          where t.company.id = :companyId
             and m.startTime < :rangeEnd
             and m.endTime > :rangeStart
           order by m.startTime asc
@@ -82,7 +85,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
           join fetch m.office o
           join fetch m.host h
           join fetch m.participatingTeams pt
-          where pt.id = :teamId
+          join m.participatingTeams t
+          where t.id = :teamId
             and m.id != :excludeId
             and m.startTime < :rangeEnd
             and m.endTime > :rangeStart
@@ -96,7 +100,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
           join fetch m.office o
           join fetch m.host h
           join fetch m.participatingTeams pt
-          join User u on u.team = pt
+          join m.participatingTeams t
+          join User u on u.team = t
           where u.id = :userId
             and m.startTime < :rangeEnd
             and m.endTime > :rangeStart
@@ -112,7 +117,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
           join fetch m.office o
           join fetch m.host h
           join fetch m.participatingTeams pt
-          join User u on u.team = pt
+          join m.participatingTeams t
+          join User u on u.team = t
           where u.id = :userId
             and m.type = com.example.hybridflow.entity.MeetingType.OFFICE
             and m.startTime < :rangeEnd

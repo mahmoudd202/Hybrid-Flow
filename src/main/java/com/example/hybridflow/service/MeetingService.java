@@ -415,7 +415,7 @@ public class MeetingService {
                 m.getEndTime(),
                 m.getType(),
                 m.getHost() != null ? m.getHost().getEmail() : null,
-                m.getOffice() != null ? m.getOffice().getName() : null,
+                m.getType() == MeetingType.ONLINE ? null : (m.getOffice() != null ? m.getOffice().getName() : null),
                 teamNames,
                 excludedUsers != null ? excludedUsers : List.of());
     }

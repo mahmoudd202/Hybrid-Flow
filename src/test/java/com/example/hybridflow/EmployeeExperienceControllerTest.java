@@ -24,6 +24,8 @@ import com.example.hybridflow.repository.TaskAssignmentRepository;
 import com.example.hybridflow.repository.TaskRepository;
 import com.example.hybridflow.repository.RequestRepository;
 import com.example.hybridflow.repository.UserRepository;
+import com.example.hybridflow.repository.TeamRepository;
+import com.example.hybridflow.repository.OfficeRepository;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -52,6 +54,8 @@ class EmployeeExperienceControllerTest {
     @Autowired RequestRepository requestRepository;
     @Autowired UserRepository userRepository;
     @Autowired ScheduleEntryRepository scheduleEntryRepository;
+    @Autowired TeamRepository teamRepository;
+    @Autowired OfficeRepository officeRepository;
 
     MockMvc mockMvc;
     final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
@@ -154,6 +158,79 @@ class EmployeeExperienceControllerTest {
             }
         }
         assertThat(foundSprintPlanning).as("Sprint Planning meeting must be present").isTrue();
+    }
+
+    @Test
+    void getMyMeetingsReturnsMultiTeamOnlineMeetingWithNullOfficeAndAllTeamNames() throws Exception {
+        // 1. Log in as manager.a to create the meeting
+        String loginBody = objectMapper.writeValueAsString(
+                Map.of("email", "manager.a@techflow.com", "password", "password123"));
+
+        MvcResult loginResult = mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String managerToken = objectMapper.readTree(loginResult.getResponse().getContentAsString())
+                .get("accessToken").asText();
+
+        // 2. Resolve team and office IDs
+        Long backendDevsTeamId = teamRepository.findAll().stream()
+                .filter(t -> "Backend Devs".equals(t.getName()))
+                .findFirst().orElseThrow().getId();
+        Long uiuxTeamId = teamRepository.findAll().stream()
+                .filter(t -> "UI/UX Design".equals(t.getName()))
+                .findFirst().orElseThrow().getId();
+        Long officeId = officeRepository.findAll().get(0).getId();
+
+        // 3. Create a multi-team ONLINE meeting
+        String createBody = objectMapper.writeValueAsString(Map.of(
+                "title", "Cross-Team Sync",
+                "startTime", java.time.LocalDateTime.now().plusDays(2).withHour(15).withMinute(0).withSecond(0).withNano(0).toString(),
+                "endTime", java.time.LocalDateTime.now().plusDays(2).withHour(16).withMinute(0).withSecond(0).withNano(0).toString(),
+                "officeId", officeId,
+                "type", "ONLINE",
+                "participatingTeamIds", List.of(backendDevsTeamId, uiuxTeamId)
+        ));
+
+        mockMvc.perform(post("/api/meetings")
+                        .header("Authorization", "Bearer " + managerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Cross-Team Sync"))
+                .andExpect(jsonPath("$.officeName").isEmpty()); // Should be null in response for ONLINE meetings
+
+        // 4. Retrieve schedule for employee dev1 (who is in Backend Devs)
+        MvcResult scheduleResult = mockMvc.perform(get("/api/meetings/my-schedule")
+                        .header("Authorization", "Bearer " + employeeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode meetings = objectMapper.readTree(scheduleResult.getResponse().getContentAsString());
+        assertThat(meetings.isArray()).isTrue();
+
+        JsonNode crossTeamSyncMeeting = null;
+        for (JsonNode meeting : meetings) {
+            if ("Cross-Team Sync".equals(meeting.get("title").asText())) {
+                crossTeamSyncMeeting = meeting;
+                break;
+            }
+        }
+
+        assertThat(crossTeamSyncMeeting).as("The Cross-Team Sync meeting must be present").isNotNull();
+        assertThat(crossTeamSyncMeeting.get("officeName").isNull()).isTrue(); // Double check it is null
+
+        // Verify that BOTH teams are present in participatingTeamNames (No collection truncation!)
+        JsonNode teamNamesNode = crossTeamSyncMeeting.get("participatingTeamNames");
+        assertThat(teamNamesNode).isNotNull();
+        assertThat(teamNamesNode.isArray()).isTrue();
+        
+        java.util.Set<String> teamNames = new java.util.HashSet<>();
+        teamNamesNode.forEach(node -> teamNames.add(node.asText()));
+
+        assertThat(teamNames).containsExactlyInAnyOrder("Backend Devs", "UI/UX Design");
     }
 
     // -----------------------------------------------------------------------
