@@ -14,6 +14,7 @@ import com.example.hybridflow.repository.UserProfileRepository;
 import com.example.hybridflow.repository.UserRepository;
 import com.example.hybridflow.repository.UserVerificationRepository;
 import com.example.hybridflow.repository.InvitationRepository;
+import com.example.hybridflow.repository.TeamRepository;
 import com.example.hybridflow.security.JwtService;
 
 import java.time.Instant;
@@ -33,6 +34,7 @@ public class AuthService {
     private final OtpService otpService;
     private final EmailService emailService;
     private final InvitationService invitationService;
+    private final TeamRepository teamRepository;
 
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
@@ -149,6 +151,7 @@ public class AuthService {
             // Case: User exists but disabled (e.g., from CSV upload)
             user = existingUserOpt.get();
             user.setPassword(passwordEncoder.encode(request.getPassword()));
+            user = userRepository.save(user);
         } else {
             // Case: User doesn't exist, must have a valid invitation
             invitation = invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(email, now)
@@ -163,6 +166,12 @@ public class AuthService {
             user.setProvider(AuthProvider.LOCAL);
             user.setEnabled(false); // Still disabled until OTP verification
             user = userRepository.save(user);
+        }
+
+        if (user.getRole() == Role.MANAGER && user.getTeam() != null) {
+            Team team = user.getTeam();
+            team.setManager(user);
+            teamRepository.save(team);
         }
 
         // Create or update UserProfile

@@ -263,7 +263,13 @@ public class ScheduleManagementService {
                         List<ScheduleEntry> userEntries = entriesByUserId.getOrDefault(member.getId(), List.of());
 
                         List<ScheduleEntryDTO> entryDtos = userEntries.stream()
-                                        .map(se -> new ScheduleEntryDTO(se.getId(), se.getDate(), se.getWorkMode()))
+                                        .map(se -> {
+                                                String officeName = null;
+                                                if (se.getSchedule() != null && se.getSchedule().getOffice() != null) {
+                                                        officeName = se.getSchedule().getOffice().getName();
+                                                }
+                                                return new ScheduleEntryDTO(se.getId(), se.getDate(), se.getWorkMode(), officeName);
+                                        })
                                         .sorted(Comparator.comparing(ScheduleEntryDTO::getDate))
                                         .toList();
 

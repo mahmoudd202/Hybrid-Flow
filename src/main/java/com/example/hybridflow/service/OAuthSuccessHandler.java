@@ -19,9 +19,12 @@ import com.example.hybridflow.entity.AuthProvider;
 import com.example.hybridflow.entity.Invitation;
 import com.example.hybridflow.entity.User;
 import com.example.hybridflow.entity.UserProfile;
+import com.example.hybridflow.entity.Role;
+import com.example.hybridflow.entity.Team;
 import com.example.hybridflow.repository.InvitationRepository;
 import com.example.hybridflow.repository.UserProfileRepository;
 import com.example.hybridflow.repository.UserRepository;
+import com.example.hybridflow.repository.TeamRepository;
 import com.example.hybridflow.security.JwtService;
 
 import java.io.IOException;
@@ -64,6 +67,7 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
     private final InvitationRepository invitationRepository;
     private final JwtService jwtService;
     private final OAuth2AuthorizedClientService authorizedClientService;
+    private final TeamRepository teamRepository;
 
     @Value("${app.frontend-base-url:http://localhost:5173}")
     private String frontendBaseUrl;
@@ -73,12 +77,14 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
             UserProfileRepository profileRepository,
             InvitationRepository invitationRepository,
             JwtService jwtService,
-            OAuth2AuthorizedClientService authorizedClientService) {
+            OAuth2AuthorizedClientService authorizedClientService,
+            TeamRepository teamRepository) {
         this.userRepository = userRepository;
         this.profileRepository = profileRepository;
         this.invitationRepository = invitationRepository;
         this.jwtService = jwtService;
         this.authorizedClientService = authorizedClientService;
+        this.teamRepository = teamRepository;
     }
 
     @Override
@@ -189,13 +195,19 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
             user.setTeam(inv.getTeam());
             user.setCompany(inv.getCompany());
             user.setEnabled(true);
-            userRepository.save(user);
+            user = userRepository.save(user);
 
             UserProfile profile = createProfile(user, provider, oAuth2User);
             profileRepository.save(profile);
 
             inv.setUsed(true);
             invitationRepository.save(inv);
+
+            if (user.getRole() == Role.MANAGER && user.getTeam() != null) {
+                Team team = user.getTeam();
+                team.setManager(user);
+                teamRepository.save(team);
+            }
 
             String jwt = jwtService.generateToken(user);
             response.sendRedirect(frontendBaseUrl + "/oauth/callback?token=" + jwt);

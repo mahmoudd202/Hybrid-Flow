@@ -13,6 +13,7 @@ import com.example.hybridflow.exception.BusinessValidationException;
 import com.example.hybridflow.exception.ResourceNotFoundException;
 import com.example.hybridflow.repository.InvitationRepository;
 import com.example.hybridflow.repository.UserRepository;
+import com.example.hybridflow.repository.TeamRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -24,14 +25,17 @@ public class InvitationService {
     private final InvitationRepository invitationRepository;
     private final EmailService emailService;
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
 
     public InvitationService(
             InvitationRepository invitationRepository,
             EmailService emailService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            TeamRepository teamRepository) {
         this.invitationRepository = invitationRepository;
         this.emailService = emailService;
         this.userRepository = userRepository;
+        this.teamRepository = teamRepository;
     }
 
     public Invitation createAndSendInvitation(String email, Role role, Team team, Company company) {
@@ -43,9 +47,25 @@ public class InvitationService {
             throw new BusinessValidationException("An active invitation has already been sent to this email.");
         }
 
-        // Strict Manager Check: A team can only have one manager
-        if (role == Role.MANAGER && team != null && team.getManager() != null) {
-            throw new BusinessValidationException("Team '" + team.getName() + "' already has a designated manager.");
+        // Strict Manager Check: A team can only have one manager.
+        // If a new manager is invited to a team that already has one, demote the old manager to an employee.
+        if (role == Role.MANAGER && team != null) {
+            if (team.getManager() != null) {
+                User oldManager = team.getManager();
+                oldManager.setRole(Role.EMPLOYEE);
+                userRepository.save(oldManager);
+
+                team.setManager(null);
+                teamRepository.save(team);
+            }
+
+            // Also demote any pending manager invitations for this team to EMPLOYEE
+            List<Invitation> pendingManagerInvites = invitationRepository
+                    .findByTeamIdAndRoleAndUsedFalseAndExpiryDateAfter(team.getId(), Role.MANAGER, Instant.now());
+            for (Invitation pendingInvite : pendingManagerInvites) {
+                pendingInvite.setRole(Role.EMPLOYEE);
+                invitationRepository.save(pendingInvite);
+            }
         }
 
         Invitation invitation = new Invitation();

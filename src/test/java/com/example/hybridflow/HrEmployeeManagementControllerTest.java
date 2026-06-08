@@ -25,6 +25,7 @@ import com.example.hybridflow.entity.Invitation;
 import com.example.hybridflow.entity.Company;
 import com.example.hybridflow.entity.User;
 import com.example.hybridflow.entity.Role;
+import com.example.hybridflow.entity.Team;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDate;
@@ -166,6 +167,13 @@ class HrEmployeeManagementControllerTest {
         JsonNode members = body.get("teams").get(0).get("members");
         assertThat(members).isNotNull();
         assertThat(members.size()).isGreaterThan(0);
+
+        JsonNode entries = members.get(0).get("entries");
+        assertThat(entries).isNotNull();
+        assertThat(entries.size()).isGreaterThan(0);
+        JsonNode firstEntry = entries.get(0);
+        assertThat(firstEntry.has("officeName")).isTrue();
+        assertThat(firstEntry.get("officeName").asText()).isEqualTo("Main HQ - New York");
     }
 
     // -----------------------------------------------------------------------
@@ -480,5 +488,145 @@ class HrEmployeeManagementControllerTest {
         assertThat(firstTeam.has("id")).isTrue();
         assertThat(firstTeam.has("name")).isTrue();
         assertThat(firstTeam.has("companyId")).isTrue();
+    }
+
+    @Test
+    void sendManagerInvitationDemotesOldManager() throws Exception {
+        // Find a team with a manager. The seeded "Backend Devs" team has manager.a@techflow.com as manager.
+        Team team = teamRepository.findAll().stream()
+                .filter(t -> "Backend Devs".equals(t.getName()))
+                .findFirst().orElseThrow();
+        
+        User oldManager = team.getManager();
+        assertThat(oldManager).isNotNull();
+        assertThat(oldManager.getRole()).isEqualTo(Role.MANAGER);
+
+        // Send manager invitation to the team
+        Map<String, Object> invitePayload = Map.of(
+                "email", "new-manager@techflow.com",
+                "role", "MANAGER",
+                "teamId", team.getId()
+        );
+
+        mockMvc.perform(post("/api/invitations/send")
+                        .header("Authorization", "Bearer " + hrToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invitePayload)))
+                .andExpect(status().isOk());
+
+        // Verify old manager is demoted to EMPLOYEE
+        User oldManagerUpdated = userRepository.findById(oldManager.getId()).orElseThrow();
+        assertThat(oldManagerUpdated.getRole()).isEqualTo(Role.EMPLOYEE);
+
+        // Verify team manager is now null
+        Team teamUpdated = teamRepository.findById(team.getId()).orElseThrow();
+        assertThat(teamUpdated.getManager()).isNull();
+
+        // Verify invitation exists
+        Invitation invitation = invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(
+                "new-manager@techflow.com", java.time.Instant.now()).orElseThrow();
+        assertThat(invitation.getRole()).isEqualTo(Role.MANAGER);
+
+        // Register the new manager
+        Map<String, Object> registerPayload = Map.of(
+                "email", "new-manager@techflow.com",
+                "password", "password123",
+                "firstName", "John",
+                "lastName", "Doe",
+                "dateOfBirth", "1990-01-01",
+                "nationality", "American"
+        );
+
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerPayload)))
+                .andExpect(status().isCreated());
+
+        // Verify the team manager is now the newly registered user
+        Team teamWithNewManager = teamRepository.findById(team.getId()).orElseThrow();
+        assertThat(teamWithNewManager.getManager()).isNotNull();
+        assertThat(teamWithNewManager.getManager().getEmail()).isEqualTo("new-manager@techflow.com");
+    }
+
+    @Test
+    void sendManagerInvitationDemotesPendingManagerInvitations() throws Exception {
+        // Find team
+        Team team = teamRepository.findAll().stream()
+                .filter(t -> "Backend Devs".equals(t.getName()))
+                .findFirst().orElseThrow();
+
+        // 1. Send first manager invitation to manager1@techflow.com
+        Map<String, Object> invitePayload1 = Map.of(
+                "email", "manager1@techflow.com",
+                "role", "MANAGER",
+                "teamId", team.getId()
+        );
+        mockMvc.perform(post("/api/invitations/send")
+                        .header("Authorization", "Bearer " + hrToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invitePayload1)))
+                .andExpect(status().isOk());
+
+        // 2. Send second manager invitation to manager2@techflow.com
+        Map<String, Object> invitePayload2 = Map.of(
+                "email", "manager2@techflow.com",
+                "role", "MANAGER",
+                "teamId", team.getId()
+        );
+        mockMvc.perform(post("/api/invitations/send")
+                        .header("Authorization", "Bearer " + hrToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invitePayload2)))
+                .andExpect(status().isOk());
+
+        // 3. Verify manager1's invitation role is demoted to EMPLOYEE
+        Invitation invite1 = invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(
+                "manager1@techflow.com", java.time.Instant.now()).orElseThrow();
+        assertThat(invite1.getRole()).isEqualTo(Role.EMPLOYEE);
+
+        // 4. Verify manager2's invitation role is MANAGER
+        Invitation invite2 = invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(
+                "manager2@techflow.com", java.time.Instant.now()).orElseThrow();
+        assertThat(invite2.getRole()).isEqualTo(Role.MANAGER);
+
+        // 5. Register both
+        Map<String, Object> registerPayload1 = Map.of(
+                "email", "manager1@techflow.com",
+                "password", "password123",
+                "firstName", "Manager",
+                "lastName", "One",
+                "dateOfBirth", "1990-01-01",
+                "nationality", "American"
+        );
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerPayload1)))
+                .andExpect(status().isCreated());
+
+        Map<String, Object> registerPayload2 = Map.of(
+                "email", "manager2@techflow.com",
+                "password", "password123",
+                "firstName", "Manager",
+                "lastName", "Two",
+                "dateOfBirth", "1990-01-01",
+                "nationality", "American"
+        );
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerPayload2)))
+                .andExpect(status().isCreated());
+
+        // 6. Verify manager1 registered as EMPLOYEE
+        User registered1 = userRepository.findByEmail("manager1@techflow.com").orElseThrow();
+        assertThat(registered1.getRole()).isEqualTo(Role.EMPLOYEE);
+
+        // 7. Verify manager2 registered as MANAGER
+        User registered2 = userRepository.findByEmail("manager2@techflow.com").orElseThrow();
+        assertThat(registered2.getRole()).isEqualTo(Role.MANAGER);
+
+        // 8. Verify the team manager is manager2
+        Team teamUpdated = teamRepository.findById(team.getId()).orElseThrow();
+        assertThat(teamUpdated.getManager()).isNotNull();
+        assertThat(teamUpdated.getManager().getEmail()).isEqualTo("manager2@techflow.com");
     }
 }

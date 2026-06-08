@@ -3,6 +3,7 @@ package com.example.hybridflow.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.example.hybridflow.entity.Invitation;
+import com.example.hybridflow.entity.Role;
 
 import java.time.Instant;
 import java.util.List;
@@ -17,4 +18,6 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
     // to find all pending invitations for a company
     List<Invitation> findByCompanyIdAndUsedFalseAndExpiryDateAfter(Long companyId, Instant now);
+
+    List<Invitation> findByTeamIdAndRoleAndUsedFalseAndExpiryDateAfter(Long teamId, Role role, Instant now);
 }
