@@ -38,7 +38,6 @@ public class TeamService {
             throw new BusinessValidationException("HR user is not assigned to a company.");
         }
 
-        // Prevent duplicate team names within the same company
         if (teamRepository.findByNameAndCompanyId(dto.getName().trim(), company.getId()).isPresent()) {
             throw new BusinessValidationException(
                     "A team with the name '" + dto.getName().trim() + "' already exists in your company.");
@@ -49,7 +48,6 @@ public class TeamService {
             office = officeRepository.findById(dto.getOfficeId())
                     .orElseThrow(() -> new BusinessValidationException("Office not found."));
 
-            // Make sure the office belongs to the HR's company
             if (!office.getCompany().getId().equals(company.getId())) {
                 throw new BusinessValidationException("You cannot assign a team to another company's office.");
             }
@@ -58,7 +56,7 @@ public class TeamService {
         Team team = new Team();
         team.setName(dto.getName().trim());
         team.setCompany(company);
-        team.setOffice(office); // null is fine — assign later
+        team.setOffice(office);
         Team saved = teamRepository.save(team);
 
         return toResponse(saved);
@@ -71,16 +69,13 @@ public class TeamService {
             throw new BusinessValidationException("HR user is not assigned to a company.");
         }
 
-        // Validate that the office exists
         Office office = officeRepository.findById(officeId)
                 .orElseThrow(() -> new BusinessValidationException("Office not found."));
 
-        // Validate that the office belongs to the HR user's company
         if (!office.getCompany().getId().equals(company.getId())) {
             throw new BusinessValidationException("You cannot access teams from another company's office.");
         }
 
-        // Fetch teams and map to DTOs
         List<Team> teams = teamRepository.findByOfficeId(officeId);
 
         return teams.stream()
@@ -118,7 +113,6 @@ public class TeamService {
 
         String trimmedName = dto.getName().trim();
 
-        // Check for duplicate name (excluding the current team being updated)
         teamRepository.findByNameAndCompanyId(trimmedName, company.getId())
                 .ifPresent(existing -> {
                     if (!existing.getId().equals(teamId)) {
@@ -158,9 +152,9 @@ public class TeamService {
             throw new BusinessValidationException("You cannot delete a team belonging to another company.");
         }
 
-        // Check if there are employees assigned to this team
         if (!userRepository.findAllByTeamId(teamId).isEmpty()) {
-            throw new BusinessValidationException("Cannot delete team because it is currently assigned to one or more employees.");
+            throw new BusinessValidationException(
+                    "Cannot delete team because it is currently assigned to one or more employees.");
         }
 
         teamRepository.delete(team);

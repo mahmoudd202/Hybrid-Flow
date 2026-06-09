@@ -170,11 +170,6 @@ public class TaskService {
 
         List<String> excludedAssignees = List.of();
 
-        /*
-         * If due date changes:
-         * - INDIVIDUAL task: still block if the assigned user is unavailable.
-         * - TEAM task: remove assignments for unavailable users.
-         */
         if (!dto.getDueDate().equals(task.getDueDate())) {
             List<TaskAssignment> currentAssignments = taskAssignmentRepository.findAllByTaskId(taskId);
             List<User> assignees = currentAssignments.stream()
@@ -285,17 +280,11 @@ public class TaskService {
 
     @Transactional
     public void handlePtoRequest(User requester, LocalDate startDate, LocalDate endDate) {
-        // Find all active tasks assigned to the requester during the PTO period
         List<TaskAssignment> conflictingAssignments = taskAssignmentRepository.findActiveAssignmentsForUserInDateRange(
                 requester.getId(),
                 startDate.atStartOfDay(),
                 endDate.plusDays(1).atStartOfDay());
 
-        /*
-         * Automatically handle PTO conflicts for tasks:
-         * Instead of deleting assignments, we mark them as PTO_UNASSIGNED.
-         * This provides a clear audit trail for both managers and employees.
-         */
         for (TaskAssignment assignment : conflictingAssignments) {
             assignment.setStatus(TaskAssignmentStatus.PTO_UNASSIGNED);
             taskAssignmentRepository.save(assignment);
@@ -482,7 +471,6 @@ public class TaskService {
             throw new AccessDeniedException("Manager is not attached to a team");
         }
 
-        // Check if this user is the designated manager for their team
         if (manager.getTeam().getManager() == null ||
                 !manager.getTeam().getManager().getId().equals(manager.getId())) {
             throw new AccessDeniedException("You are not the designated manager of this team");

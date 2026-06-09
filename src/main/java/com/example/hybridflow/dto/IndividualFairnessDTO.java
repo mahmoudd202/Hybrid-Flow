@@ -15,5 +15,5 @@ public class IndividualFairnessDTO {
     private Long userId;
     private String userEmail;
     private double score;
-    private Map<String, String> breakdown; // Optional: details like office/online balance, preference satisfaction
+    private Map<String, String> breakdown;
 }

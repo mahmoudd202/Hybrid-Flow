@@ -42,59 +42,28 @@ public class ScheduleController {
     private final ScheduleTeamAvailabilityService scheduleTeamAvailabilityService;
     private final ScheduleOptimizationRunService optimizationRunService;
 
-    // ── PRE-GENERATION SEQUENCE ───────────────────────────────────────────────
-
-    /**
-     * STEP 1 — Review existing unpublished (draft) schedules.
-     *
-     * GET /api/schedules/unpublished
-     *
-     * Returns all draft schedules for the authenticated HR user's company,
-     * together with their fairness scores. For schedules generated after the
-     * async-generation feature was introduced, scores come from the stored
-     * ScheduleOptimizationRun snapshot (no recompute drift). Legacy schedules
-     * fall back to live recompute.
-     *
-     * Response includes:
-     * - count total draft schedules
-     * - overallFairnessScore aggregate score (0–100)
-     * - schedules[] one entry per team/schedule with:
-     *   scheduleId, teamId, teamName, officeId, officeName,
-     *   startDate, endDate, createdAt,
-     *   teamFairnessScore { score, breakdown }
-     *   individualFairnessScores[] { userId, userEmail, score, breakdown }
-     *   optimizationRun { runId, jobStatus, runtimeSeconds, mipGap, ... }
-     */
     @GetMapping("/unpublished")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<UnpublishedSchedulesResponseDTO> getUnpublishedSchedules(
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        if (userDetails == null) return ResponseEntity.status(401).build();
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
         return ResponseEntity.ok(
                 scheduleManagementService.getUnpublishedSchedules(userDetails.getUser()));
     }
 
-    /**
-     * STEP 2 — Clear ALL unpublished schedules.
-     *
-     * DELETE /api/schedules/unpublished
-     */
     @DeleteMapping("/unpublished")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<DeleteUnpublishedSchedulesResponseDTO> deleteUnpublishedSchedules(
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        if (userDetails == null) return ResponseEntity.status(401).build();
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
         return ResponseEntity.ok(
                 scheduleManagementService.deleteAllUnpublishedSchedules(userDetails.getUser()));
     }
 
-    /**
-     * STEP 3 — Check which teams are available for a new generation run.
-     *
-     * GET /api/schedules/available-teams
-     */
     @GetMapping("/available-teams")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<AvailableScheduleTeamsResponseDTO> getAvailableTeams(
@@ -109,21 +78,6 @@ public class ScheduleController {
                         officeId, startDate, endDate, currentUser));
     }
 
-    // ── GENERATION ────────────────────────────────────────────────────────────
-
-    /**
-     * STEP 4 — Start async schedule generation.
-     *
-     * POST /api/schedules/generate
-     *
-     * Returns HTTP 202 Accepted immediately with a runId.
-     * Poll GET /api/schedules/optimization-runs/{runId} to check progress.
-     *
-     * When the solver finishes:
-     *   jobStatus = "COMPLETED" → scheduleIds are populated, use them to publish.
-     *   jobStatus = "FAILED"    → errorMessage explains why (e.g. INFEASIBLE).
-     *                             Handle exactly like the old status="FAILED" response.
-     */
     @PostMapping("/generate")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<ScheduleGenerationAcceptedDTO> generateSchedule(
@@ -131,25 +85,10 @@ public class ScheduleController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
         User currentUser = userDetails.getUser();
-        ScheduleGenerationAcceptedDTO accepted =
-                scheduleGenerationService.generateSchedule(request, currentUser);
+        ScheduleGenerationAcceptedDTO accepted = scheduleGenerationService.generateSchedule(request, currentUser);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(accepted);
     }
 
-    // ── OPTIMIZATION RUN HISTORY & POLLING ───────────────────────────────────
-
-    /**
-     * Poll the status / result of a specific optimization run.
-     *
-     * GET /api/schedules/optimization-runs/{runId}
-     *
-     * Returns OptimizationRunDTO with jobStatus in:
-     *   PENDING   — accepted, not yet started
-     *   RUNNING   — Gurobi is solving right now
-     *   COMPLETED — solution found; objectiveValue, runtimeSeconds, scheduleIds,
-     *               overallFairnessScore etc. are all populated
-     *   FAILED    — check errorMessage (same semantics as old status="FAILED")
-     */
     @GetMapping("/optimization-runs/{runId}")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<OptimizationRunDTO> getOptimizationRun(
@@ -160,14 +99,6 @@ public class ScheduleController {
         return ResponseEntity.ok(optimizationRunService.getRunById(runId, companyId));
     }
 
-    /**
-     * Full history of all COMPLETED optimization runs for this company.
-     *
-     * GET /api/schedules/optimization-runs
-     *
-     * Returns newest-first list. PENDING/RUNNING/FAILED runs are excluded —
-     * this is the permanent stats archive of successful solves.
-     */
     @GetMapping("/optimization-runs")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<List<OptimizationRunDTO>> getOptimizationRunHistory(
@@ -176,8 +107,6 @@ public class ScheduleController {
         Long companyId = userDetails.getUser().getCompany().getId();
         return ResponseEntity.ok(optimizationRunService.getCompletedRunsForCompany(companyId));
     }
-
-    // ── EXISTING ENDPOINTS (unchanged) ───────────────────────────────────────
 
     @PostMapping("/check-conflicts")
     @PreAuthorize("hasRole('HR')")

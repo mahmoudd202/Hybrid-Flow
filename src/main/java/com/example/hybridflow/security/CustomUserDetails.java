@@ -24,7 +24,7 @@ public class CustomUserDetails implements UserDetails {
                 new SimpleGrantedAuthority(
                         "ROLE_" + user.getRole().name()
                 )
-        ); // If "ROLE_" is not written, authorization will silently fail
+        ); 
     }
 
 

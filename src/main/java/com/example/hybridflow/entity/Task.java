@@ -1,7 +1,9 @@
 package com.example.hybridflow.entity;
+
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "tasks")
 @Data
@@ -20,14 +22,17 @@ public class Task {
     private TaskTargetType targetType;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "created_by_manager_id", nullable = false)
-@lombok.EqualsAndHashCode.Exclude @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private User createdBy;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
-@lombok.EqualsAndHashCode.Exclude @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private Company company;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "team_id", nullable = false)
-@lombok.EqualsAndHashCode.Exclude @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private Team team;
 }

@@ -21,27 +21,17 @@ public class ScheduleAvailabilityService {
         this.scheduleEntryRepository = scheduleEntryRepository;
     }
 
-    /**
-     * Strict validation for flows where unavailable users should block the action.
-     * only OFF means unavailable.
-     */
     public void validateUserIsSchedulableOnDate(User user, LocalDate date) {
         ScheduleEntry entry = scheduleEntryRepository.findPublishedEntryForUserOnDate(user.getId(), date)
                 .orElseThrow(() -> new BusinessValidationException(
-                        "User " + user.getEmail() + " has no published schedule entry on " + date
-                ));
+                        "User " + user.getEmail() + " has no published schedule entry on " + date));
 
         if (entry.getWorkMode() == WorkMode.OFF) {
             throw new BusinessValidationException(
-                    "User " + user.getEmail() + " is OFF on " + date
-            );
+                    "User " + user.getEmail() + " is OFF on " + date);
         }
     }
 
-    /**
-     * Strict validation for flows where unavailable users should block the action.
-     * only OFF means unavailable.
-     */
     public void validateUsersAreSchedulableOnDate(List<User> users, LocalDate date) {
         List<String> conflicts = new ArrayList<>();
 
@@ -64,11 +54,6 @@ public class ScheduleAvailabilityService {
         }
     }
 
-    /**
-     * Option 2 behavior:
-     * Does not throw.
-     * Returns users who should be excluded from meetings/team tasks.
-     */
     public List<String> findUnavailableUserEmailsOnDate(List<User> users, LocalDate date) {
         List<String> unavailableUsers = new ArrayList<>();
 

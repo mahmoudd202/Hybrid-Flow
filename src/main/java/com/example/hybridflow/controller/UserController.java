@@ -27,10 +27,6 @@ public class UserController {
 
     private final UserService userService;
 
-    /**
-     * Fetch details for a single employee.
-     * Accessible by HR, Managers, and the employee themselves.
-     */
     @GetMapping("/{employeeId}")
     @PreAuthorize("hasAnyRole('HR', 'MANAGER', 'EMPLOYEE')")
     public ResponseEntity<EmployeeDetailsResponseDTO> getEmployeeDetails(
@@ -40,8 +36,6 @@ public class UserController {
             return ResponseEntity.status(401).build();
         }
 
-        // Allow HR and Managers to view any employee. Employees can only view their own
-        // details.
         if (userDetails.getUser().getRole().name().equals("EMPLOYEE")
                 && !userDetails.getUser().getId().equals(employeeId)) {
             return ResponseEntity.status(403).build(); // Forbidden
@@ -51,10 +45,6 @@ public class UserController {
         return ResponseEntity.ok(employeeDetails);
     }
 
-    /**
-     * Update an employee's role.
-     * Only accessible by HR users.
-     */
     @PatchMapping("/{employeeId}/role")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<EmployeeDetailsResponseDTO> updateEmployeeRole(
@@ -98,10 +88,6 @@ public class UserController {
         return ResponseEntity.ok(deactivatedEmployee);
     }
 
-    /**
-     * List all employees in the current user's company.
-     * Accessible by HR and Managers.
-     */
     @GetMapping
     @PreAuthorize("hasAnyRole('HR', 'MANAGER', 'EMPLOYEE')")
     public ResponseEntity<List<EmployeeDetailsResponseDTO>> getAllEmployees(
@@ -115,7 +101,8 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<CurrentUserResponseDTO> getCurrentUser(@AuthenticationPrincipal CustomUserDetails userDetails) {
+    public ResponseEntity<CurrentUserResponseDTO> getCurrentUser(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }

@@ -28,19 +28,19 @@ public class TeamController {
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<TeamResponseDTO> createTeam(
             @Valid @RequestBody TeamCreateRequestDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
 
         TeamResponseDTO response = teamService.createTeam(dto, userDetails.getUser());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
+
     @GetMapping("/office/{officeId}")
     @PreAuthorize("hasAnyRole('HR', 'MANAGER')")
     public ResponseEntity<List<TeamResponseDTO>> getTeamsByOffice(
             @PathVariable Long officeId,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
@@ -52,8 +52,7 @@ public class TeamController {
     @GetMapping("/company")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<List<TeamResponseDTO>> getTeamsByCompany(
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
@@ -67,8 +66,7 @@ public class TeamController {
     public ResponseEntity<TeamResponseDTO> updateTeam(
             @PathVariable Long teamId,
             @Valid @RequestBody TeamCreateRequestDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
@@ -81,8 +79,7 @@ public class TeamController {
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<Void> deleteTeam(
             @PathVariable Long teamId,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
@@ -95,8 +92,7 @@ public class TeamController {
     @PreAuthorize("hasAnyRole('HR', 'MANAGER', 'EMPLOYEE')")
     public ResponseEntity<List<EmployeeDetailsResponseDTO>> getTeamMembers(
             @PathVariable Long teamId,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }

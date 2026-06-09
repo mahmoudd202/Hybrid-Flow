@@ -22,15 +22,9 @@ public class ScheduleEvaluationService {
 
     private final ScheduleEntryRepository scheduleEntryRepository;
     private final UserRepository userRepository;
-    private final TeamRepository teamRepository;
     private final PlanningPolicyRepository planningPolicyRepository;
     private final PreferredWorkDayRepository preferredWorkDayRepository;
 
-    // ── Existing method (used by ScheduleGenerationService) ──────────────────
-
-    /**
-     * Full evaluation using a known PlanningPolicy (called right after generation).
-     */
     public EvaluationResult evaluateSchedules(List<Long> scheduleIds, List<User> users, List<Team> teams,
             PlanningPolicy policy, LocalDate startDate, LocalDate endDate) {
         Map<Long, List<ScheduleEntry>> userScheduleEntries = new HashMap<>();
@@ -49,18 +43,6 @@ public class ScheduleEvaluationService {
         return new EvaluationResult(overallScore, teamScores, individualScores);
     }
 
-    // ── New method (used by ScheduleManagementService for unpublished review) ─
-
-    /**
-     * Evaluate unpublished schedules without a PlanningPolicy context.
-     *
-     * Because the Schedule entity does not store the policy that was used for
-     * generation, we fall back to the most-recently-created policy of the team's
-     * company. If no policy exists we use a permissive default (min=0, max=5).
-     *
-     * This gives HR a meaningful fairness preview even when reviewing drafts
-     * that were generated in a previous session.
-     */
     public EvaluationResult evaluateForUnpublished(
             List<Long> scheduleIds,
             List<User> users,
@@ -72,7 +54,6 @@ public class ScheduleEvaluationService {
             return new EvaluationResult(0.0, List.of(), List.of());
         }
 
-        // Best-effort: grab the latest policy from the company owning the first team
         Long companyId = teams.get(0).getCompany().getId();
         PlanningPolicy policy = planningPolicyRepository
                 .findByCompanyIdOrderByCreatedAtDesc(companyId)
@@ -83,15 +64,12 @@ public class ScheduleEvaluationService {
         return evaluateSchedules(scheduleIds, users, teams, policy, startDate, endDate);
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
-
     private List<IndividualFairnessDTO> calculateIndividualFairness(List<User> users,
             Map<Long, List<ScheduleEntry>> userScheduleEntries, PlanningPolicy policy, LocalDate startDate,
             LocalDate endDate) {
 
         List<IndividualFairnessDTO> scores = new ArrayList<>();
 
-        // Group all work dates by ISO week so we can evaluate balance per week.
         WeekFields iso = WeekFields.ISO;
         Map<String, List<LocalDate>> allDatesByWeek = buildDatesByWeek(startDate, endDate, iso);
 
@@ -99,24 +77,12 @@ public class ScheduleEvaluationService {
             List<ScheduleEntry> entries = userScheduleEntries.getOrDefault(user.getId(), Collections.emptyList());
             Map<String, String> breakdown = new HashMap<>();
 
-            // Index entries by date for fast lookup
             Map<LocalDate, WorkMode> modeByDate = entries.stream()
                     .collect(Collectors.toMap(ScheduleEntry::getDate, ScheduleEntry::getWorkMode));
 
             long officeDays = entries.stream().filter(e -> e.getWorkMode() == WorkMode.OFFICE).count();
             long totalWorkDays = entries.size();
 
-            // ── Fix 1: officeDayBalance evaluated per ISO week, then averaged ──────
-            //
-            // Previously, the balance check was done against the *total* office days
-            // across the whole period compared to min/max. That means a user perfectly
-            // hitting 2 days/week over 2 weeks (total=4) would be checked against a
-            // period-wide [min*weeks, max*weeks] band that was never explicitly derived,
-            // making the score sensitive to period length.
-            //
-            // Now: compute a 0-1 balance score for each ISO week in the schedule, then
-            // average them. A week where the user is squarely in [min, max] scores 1.0;
-            // above or below is penalised proportionally, clamped to 0.
             double officeDayBalanceScore = 0.0;
             if (totalWorkDays > 0) {
                 double targetMin = policy.getMinOfficeDaysPerWeek();
@@ -124,7 +90,6 @@ public class ScheduleEvaluationService {
 
                 List<Double> weeklyBalanceScores = new ArrayList<>();
                 for (List<LocalDate> weekDates : allDatesByWeek.values()) {
-                    // Only score weeks that have at least one work day in the schedule
                     List<LocalDate> scheduledInWeek = weekDates.stream()
                             .filter(modeByDate::containsKey)
                             .collect(Collectors.toList());
@@ -151,7 +116,6 @@ public class ScheduleEvaluationService {
             }
             breakdown.put("officeDayBalance", String.format("%.2f", officeDayBalanceScore));
 
-            // ── Preferred Work Days Satisfaction (unchanged) ──────────────────────
             Set<DayOfWeek> preferredOnlineDays = preferredWorkDayRepository.findByUserId(user.getId()).stream()
                     .map(PreferredWorkDay::getDayOfWeek)
                     .collect(Collectors.toSet());
@@ -171,16 +135,6 @@ public class ScheduleEvaluationService {
 
             breakdown.put("preferenceSatisfaction", String.format("%.2f", preferenceSatisfactionScore));
 
-            // ── Fix 2: distributionBalance uses work-day span, not calendar-day span ─
-            //
-            // Previously: span = lastOfficeEpochDay - firstOfficeEpochDay + 1
-            // This includes weekends, inflating the denominator. A user with 4 perfectly
-            // spread office days over 2 calendar weeks got span≈12 → score≈0.33, even
-            // though the distribution was perfectly even.
-            //
-            // Now: count only the weekdays (Mon–Fri) that fall between the first and last
-            // office day (inclusive). This removes the weekend-inflation bias and correctly
-            // rewards schedules where office days are spread evenly across work days.
             double distributionBalanceScore = 1.0;
             if (totalWorkDays > 0 && officeDays > 0) {
                 List<LocalDate> officeDatesSorted = entries.stream()
@@ -192,14 +146,12 @@ public class ScheduleEvaluationService {
                 LocalDate firstOfficeDate = officeDatesSorted.get(0);
                 LocalDate lastOfficeDate = officeDatesSorted.get(officeDatesSorted.size() - 1);
 
-                // Count weekdays between first and last office day (inclusive)
                 long workDaySpan = countWeekdays(firstOfficeDate, lastOfficeDate);
 
                 if (workDaySpan > 0) {
                     distributionBalanceScore = (double) officeDays / workDaySpan;
                 }
             }
-            // Cap at 1.0: a dense back-to-back cluster can have officeDays == workDaySpan
             distributionBalanceScore = Math.min(1.0, Math.max(0.0, distributionBalanceScore));
             breakdown.put("distributionBalance", String.format("%.2f", distributionBalanceScore));
 
@@ -217,10 +169,6 @@ public class ScheduleEvaluationService {
         return scores;
     }
 
-    /**
-     * Counts the number of weekdays (Monday through Friday) in the inclusive range
-     * [from, to]. Returns 1 when from == to and the day is a weekday.
-     */
     private long countWeekdays(LocalDate from, LocalDate to) {
         if (from.isAfter(to))
             return 0;
@@ -236,10 +184,6 @@ public class ScheduleEvaluationService {
         return count;
     }
 
-    /**
-     * Builds a map of ISO-week key → list of weekdays in [startDate, endDate].
-     * Used to evaluate officeDayBalance per week.
-     */
     private Map<String, List<LocalDate>> buildDatesByWeek(LocalDate startDate, LocalDate endDate, WeekFields iso) {
         Map<String, List<LocalDate>> result = new LinkedHashMap<>();
         LocalDate cursor = startDate;
@@ -327,10 +271,6 @@ public class ScheduleEvaluationService {
         return Math.round(overallScore * 100.0) / 100.0;
     }
 
-    /**
-     * Creates a lenient default policy used when no real policy exists.
-     * It never blocks the scoring calculation (min=0, max=5).
-     */
     private PlanningPolicy buildPermissiveDefaultPolicy(Long companyId) {
         PlanningPolicy p = new PlanningPolicy();
         p.setWorkingDaysPerWeek(5);
@@ -341,8 +281,6 @@ public class ScheduleEvaluationService {
         p.setCoPresenceThresholdPercentagePerDay(0);
         return p;
     }
-
-    // ── Result record ─────────────────────────────────────────────────────────
 
     @Data
     @AllArgsConstructor

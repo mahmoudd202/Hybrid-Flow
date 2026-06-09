@@ -52,20 +52,6 @@ public class ScheduleManagementService {
         private final UserRepository userRepository;
         private final TeamRepository teamRepository;
 
-        // -------------------------------------------------------------------------
-        // NEW: GET /api/schedules/unpublished
-        // -------------------------------------------------------------------------
-
-        /**
-         * Returns all unpublished (draft) schedules for the HR user's company,
-         * together with their fairness scores.
-         *
-         * This is step 1 in the generation pre-flight sequence:
-         * 1. GET /api/schedules/unpublished ← HERE (review + see scores)
-         * 2. DELETE /api/schedules/unpublished ← clean slate if needed
-         * 3. GET /api/schedules/available-teams
-         * 4. POST /api/schedules/generate
-         */
         @Transactional(readOnly = true)
         public UnpublishedSchedulesResponseDTO getUnpublishedSchedules(User hrUser) {
                 validateHrContext(hrUser);
@@ -82,7 +68,6 @@ public class ScheduleManagementService {
                                         .build();
                 }
 
-                // ── Batch load all draft entries and users to prevent N+1 queries ──────
                 List<Long> unpublishedScheduleIds = unpublished.stream()
                                 .map(Schedule::getId)
                                 .toList();
@@ -103,15 +88,13 @@ public class ScheduleManagementService {
                                 .filter(u -> u.getTeam() != null)
                                 .collect(Collectors.groupingBy(u -> u.getTeam().getId()));
 
-                // ── Separate schedules that have a stored run from those that don't ────
                 Map<Boolean, List<Schedule>> partitioned = unpublished.stream()
                                 .collect(Collectors.partitioningBy(
                                                 s -> s.getOptimizationRun() != null));
 
-                List<Schedule> withRun    = partitioned.get(true);
+                List<Schedule> withRun = partitioned.get(true);
                 List<Schedule> withoutRun = partitioned.get(false);
 
-                // ── Build stored-run DTOs ─────────────────────────────────────────────
                 Map<Long, OptimizationRunDTO> runDTOByRunId = withRun.stream()
                                 .collect(Collectors.toMap(
                                                 s -> s.getOptimizationRun().getId(),
@@ -121,25 +104,27 @@ public class ScheduleManagementService {
                 List<UnpublishedScheduleDTO> storedRunDTOs = withRun.stream()
                                 .map(schedule -> {
                                         Long teamId = schedule.getTeam().getId();
-                                        OptimizationRunDTO runDTO =
-                                                runDTOByRunId.get(schedule.getOptimizationRun().getId());
+                                        OptimizationRunDTO runDTO = runDTOByRunId
+                                                        .get(schedule.getOptimizationRun().getId());
 
                                         TeamFairnessDTO teamScore = runDTO.getTeamFairnessScores() == null
-                                                ? null
-                                                : runDTO.getTeamFairnessScores().stream()
-                                                         .filter(t -> t.getTeamId().equals(teamId))
-                                                         .findFirst().orElse(null);
+                                                        ? null
+                                                        : runDTO.getTeamFairnessScores().stream()
+                                                                        .filter(t -> t.getTeamId().equals(teamId))
+                                                                        .findFirst().orElse(null);
 
-                                        List<IndividualFairnessDTO> memberScores =
-                                                runDTO.getIndividualFairnessScores() == null
-                                                ? List.of()
-                                                : runDTO.getIndividualFairnessScores().stream()
-                                                         .filter(i -> teamScore != null
-                                                                 && teamBelongsToMember(i.getUserId(), teamId))
-                                                         .toList();
+                                        List<IndividualFairnessDTO> memberScores = runDTO
+                                                        .getIndividualFairnessScores() == null
+                                                                        ? List.of()
+                                                                        : runDTO.getIndividualFairnessScores().stream()
+                                                                                        .filter(i -> teamScore != null
+                                                                                                        && teamBelongsToMember(
+                                                                                                                        i.getUserId(),
+                                                                                                                        teamId))
+                                                                                        .toList();
 
                                         List<UserScheduleDTO> members = buildUserSchedulesForDraft(
-                                                schedule, usersByTeamId, entriesByScheduleId);
+                                                        schedule, usersByTeamId, entriesByScheduleId);
 
                                         return UnpublishedScheduleDTO.builder()
                                                         .scheduleId(schedule.getId())
@@ -151,8 +136,9 @@ public class ScheduleManagementService {
                                                         .endDate(schedule.getEndDate())
                                                         .createdAt(schedule.getCreatedAt())
                                                         .overallFairnessScore(
-                                                                runDTO.getOverallFairnessScore() != null
-                                                                ? runDTO.getOverallFairnessScore() : 0.0)
+                                                                        runDTO.getOverallFairnessScore() != null
+                                                                                        ? runDTO.getOverallFairnessScore()
+                                                                                        : 0.0)
                                                         .teamFairnessScore(teamScore)
                                                         .individualFairnessScores(memberScores)
                                                         .members(members)
@@ -161,7 +147,6 @@ public class ScheduleManagementService {
                                 })
                                 .toList();
 
-                // ── Build legacy (live-recompute) DTOs ────────────────────────────────
                 List<UnpublishedScheduleDTO> legacyDTOs = List.of();
 
                 if (!withoutRun.isEmpty()) {
@@ -189,13 +174,13 @@ public class ScheduleManagementService {
 
                         legacyDTOs = withoutRun.stream().map(schedule -> {
                                 Long teamId = schedule.getTeam().getId();
-                                List<IndividualFairnessDTO> individualScoresForTeam =
-                                        usersByTeamId.getOrDefault(teamId, List.of()).stream()
+                                List<IndividualFairnessDTO> individualScoresForTeam = usersByTeamId
+                                                .getOrDefault(teamId, List.of()).stream()
                                                 .map(u -> individualByUserId.get(u.getId()))
                                                 .filter(d -> d != null).toList();
 
                                 List<UserScheduleDTO> members = buildUserSchedulesForDraft(
-                                        schedule, usersByTeamId, entriesByScheduleId);
+                                                schedule, usersByTeamId, entriesByScheduleId);
 
                                 return UnpublishedScheduleDTO.builder()
                                                 .scheduleId(schedule.getId())
@@ -215,7 +200,6 @@ public class ScheduleManagementService {
                         }).toList();
                 }
 
-                // ── Merge and compute aggregate overall score ─────────────────────────
                 List<UnpublishedScheduleDTO> allDTOs = new ArrayList<>();
                 allDTOs.addAll(storedRunDTOs);
                 allDTOs.addAll(legacyDTOs);
@@ -231,21 +215,12 @@ public class ScheduleManagementService {
                                 .build();
         }
 
-        /**
-         * Helper: determines whether a user (by ID) belongs to the given team.
-         * Used when filtering individual fairness scores by team in stored run data.
-         * Simple lookup via UserRepository to avoid holding extra maps.
-         */
         private boolean teamBelongsToMember(Long userId, Long teamId) {
-                 return userRepository.findById(userId)
-                                 .map(u -> u.getTeam() != null && u.getTeam().getId().equals(teamId))
-                                 .orElse(false);
+                return userRepository.findById(userId)
+                                .map(u -> u.getTeam() != null && u.getTeam().getId().equals(teamId))
+                                .orElse(false);
         }
 
-        /**
-         * Helper: builds UserScheduleDTO list with day-by-day generated schedule entries
-         * for members of a team in an unpublished draft schedule.
-         */
         private List<UserScheduleDTO> buildUserSchedulesForDraft(
                         Schedule schedule,
                         Map<Long, List<User>> usersByTeamId,
@@ -268,7 +243,8 @@ public class ScheduleManagementService {
                                                 if (se.getSchedule() != null && se.getSchedule().getOffice() != null) {
                                                         officeName = se.getSchedule().getOffice().getName();
                                                 }
-                                                return new ScheduleEntryDTO(se.getId(), se.getDate(), se.getWorkMode(), officeName);
+                                                return new ScheduleEntryDTO(se.getId(), se.getDate(), se.getWorkMode(),
+                                                                officeName);
                                         })
                                         .sorted(Comparator.comparing(ScheduleEntryDTO::getDate))
                                         .toList();
@@ -282,11 +258,9 @@ public class ScheduleManagementService {
                                         firstName,
                                         lastName,
                                         member.getRole().name(),
-                                        entryDtos
-                        ));
+                                        entryDtos));
                 }
 
-                // Sort: manager first, then alphabetically by email
                 memberDtos.sort(Comparator
                                 .comparing((UserScheduleDTO u) -> !"MANAGER".equals(u.getRoleName()))
                                 .thenComparing(UserScheduleDTO::getEmail));
@@ -294,19 +268,6 @@ public class ScheduleManagementService {
                 return memberDtos;
         }
 
-        // -------------------------------------------------------------------------
-        // NEW: DELETE /api/schedules/unpublished
-        // -------------------------------------------------------------------------
-
-        /**
-         * Permanently deletes ALL unpublished (draft) schedules and their entries
-         * for the HR user's company.
-         *
-         * This is step 2 in the generation pre-flight sequence, called when the HR
-         * user decides to discard all pending drafts before generating fresh ones.
-         *
-         * Only unpublished schedules are affected; published schedules are untouched.
-         */
         @Transactional
         public DeleteUnpublishedSchedulesResponseDTO deleteAllUnpublishedSchedules(User hrUser) {
                 validateHrContext(hrUser);
@@ -327,7 +288,6 @@ public class ScheduleManagementService {
                                 .map(Schedule::getId)
                                 .toList();
 
-                // Delete entries first to respect FK constraints
                 scheduleEntryRepository.deleteByScheduleIdIn(scheduleIds);
                 scheduleRepository.deleteAll(unpublished);
 
@@ -338,11 +298,6 @@ public class ScheduleManagementService {
                                 .deletedScheduleIds(scheduleIds)
                                 .build();
         }
-
-        // -------------------------------------------------------------------------
-        // Batch publish endpoint logic:
-        // POST /api/schedules/publish
-        // -------------------------------------------------------------------------
 
         @Transactional
         public SchedulePublishResponseDTO publishSchedules(
@@ -369,8 +324,6 @@ public class ScheduleManagementService {
                 for (Schedule schedule : schedules) {
                         schedule.setPublished(true);
 
-                        // Sync the team's office assignment so that getTeamsByOffice
-                        // (which queries teams.office_id) reflects the published office.
                         Team team = schedule.getTeam();
                         if (team != null && schedule.getOffice() != null) {
                                 team.setOffice(schedule.getOffice());
@@ -386,11 +339,6 @@ public class ScheduleManagementService {
                                 .publishedScheduleIds(scheduleIds)
                                 .build();
         }
-
-        // -------------------------------------------------------------------------
-        // Existing conflict-check endpoint logic:
-        // POST /api/schedules/check-conflicts
-        // -------------------------------------------------------------------------
 
         @Transactional(readOnly = true)
         public ScheduleConflictCheckResponseDTO checkConflicts(
@@ -443,11 +391,6 @@ public class ScheduleManagementService {
                                 .build();
         }
 
-        // -------------------------------------------------------------------------
-        // Existing single schedule publish logic:
-        // POST /api/schedules/{id}/publish
-        // -------------------------------------------------------------------------
-
         @Transactional
         public void publishSchedule(Long scheduleId) {
                 Schedule schedule = scheduleRepository.findById(scheduleId)
@@ -463,19 +406,12 @@ public class ScheduleManagementService {
                 schedule.setPublished(true);
                 scheduleRepository.save(schedule);
 
-                // Sync the team's office assignment so that getTeamsByOffice
-                // (which queries teams.office_id) reflects the published office.
                 Team team = schedule.getTeam();
                 if (team != null && schedule.getOffice() != null) {
                         team.setOffice(schedule.getOffice());
                         teamRepository.save(team);
                 }
         }
-
-        // -------------------------------------------------------------------------
-        // Existing delete logic:
-        // DELETE /api/schedules/{id}
-        // -------------------------------------------------------------------------
 
         @Transactional
         public void deleteSchedule(Long scheduleId) {
@@ -519,10 +455,6 @@ public class ScheduleManagementService {
                                 .discardedScheduleIds(scheduleIds)
                                 .build();
         }
-
-        // -------------------------------------------------------------------------
-        // Batch publish validation helpers
-        // -------------------------------------------------------------------------
 
         private void validatePublishRequest(
                         SchedulePublishRequestDTO request,
@@ -766,10 +698,6 @@ public class ScheduleManagementService {
                 }
         }
 
-        // -------------------------------------------------------------------------
-        // Single publish validation helpers
-        // -------------------------------------------------------------------------
-
         private void validateSingleScheduleHasNoPublishedOverlap(Schedule schedule) {
                 List<Schedule> conflicts = scheduleRepository.findPublishedForTeamInRange(
                                 schedule.getTeam().getId(),
@@ -829,8 +757,6 @@ public class ScheduleManagementService {
                         }
                 }
         }
-
-        // ── Common guard ──────────────────────────────────────────────────────────
 
         private void validateHrContext(User hrUser) {
                 if (hrUser == null || hrUser.getId() == null) {

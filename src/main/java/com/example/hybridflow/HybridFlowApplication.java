@@ -66,8 +66,7 @@ public class HybridFlowApplication {
             TaskAssignmentRepository taskAssignmentRepository,
             MeetingRepository meetingRepository,
             RequestRepository requestRepository,
-            PasswordEncoder passwordEncoder
-    ) {
+            PasswordEncoder passwordEncoder) {
         return args -> {
             // 1. Create company
             Company company = new Company();
@@ -163,7 +162,6 @@ public class HybridFlowApplication {
             teamB.setManager(managerB);
             teamB = teamRepository.save(teamB);
 
-            // 7. Seed HR user
             User hrUser = new User();
             hrUser.setEmail("hr@techflow.com");
             hrUser.setPassword(commonPassword);
@@ -172,12 +170,6 @@ public class HybridFlowApplication {
             hrUser.setEnabled(true);
             userRepository.save(hrUser);
 
-            /*
-             * 8. Create published schedules.
-             *
-             * HR does NOT get a schedule.
-             * Only managers and employees get ScheduleEntry rows.
-             */
             LocalDate startDate = LocalDate.now().with(DayOfWeek.MONDAY);
             LocalDate endDate = startDate.plusWeeks(4).minusDays(1);
 
@@ -205,8 +197,7 @@ public class HybridFlowApplication {
                     List.of(managerA, dev1, dev2),
                     startDate,
                     endDate,
-                    random
-            );
+                    random);
 
             createRandomScheduleEntries(
                     scheduleEntryRepository,
@@ -214,10 +205,8 @@ public class HybridFlowApplication {
                     List.of(managerB, designer1, designer2),
                     startDate,
                     endDate,
-                    random
-            );
+                    random);
 
-            // 9. Planning policy — HR policy list must never be blank on first login
             PlanningPolicy policy = new PlanningPolicy();
             policy.setCompany(company);
             policy.setName("Standard Hybrid Policy");
@@ -229,8 +218,6 @@ public class HybridFlowApplication {
             policy.setCoPresenceThresholdPercentagePerDay(50);
             planningPolicyRepository.save(policy);
 
-            // 10. Task assigned to dev1 — Employee task list and Manager assignments
-            //     modal must never be blank on first login
             Task task = new Task();
             task.setTitle("Set up CI/CD pipeline");
             task.setDescription("Configure GitHub Actions for automated build and deployment.");
@@ -248,8 +235,6 @@ public class HybridFlowApplication {
             assignment.setAssignedAt(LocalDateTime.now());
             taskAssignmentRepository.save(assignment);
 
-            // 11. Meeting for Backend Devs — Manager and Employee meeting lists
-            //     must never be blank on first login
             Meeting meeting = new Meeting();
             meeting.setTitle("Sprint Planning");
             meeting.setStartTime(LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0));
@@ -260,8 +245,6 @@ public class HybridFlowApplication {
             meeting.setParticipatingTeams(List.of(teamA));
             meetingRepository.save(meeting);
 
-            // 12. Pending WFH request from dev1 — HR pending requests list
-            //     must never be blank on first login
             Request wfhRequest = new Request();
             wfhRequest.setRequester(dev1);
             wfhRequest.setCompany(company);
@@ -281,7 +264,8 @@ public class HybridFlowApplication {
             System.out.println("    HR: hr@techflow.com / password123");
             System.out.println("    Manager A: manager.a@techflow.com / password123");
             System.out.println("    Manager B: manager.b@techflow.com / password123");
-            System.out.println("    Employees: dev1@techflow.com, dev2@techflow.com, designer1@techflow.com, designer2@techflow.com / password123");
+            System.out.println(
+                    "    Employees: dev1@techflow.com, dev2@techflow.com, designer1@techflow.com, designer2@techflow.com / password123");
             System.out.println(">>> Random published schedule entries created for managers and employees only.");
             System.out.println(">>> HR has no schedule entries.");
         };
@@ -293,8 +277,7 @@ public class HybridFlowApplication {
             List<User> users,
             LocalDate startDate,
             LocalDate endDate,
-            Random random
-    ) {
+            Random random) {
         for (User user : users) {
             LocalDate currentDate = startDate;
 

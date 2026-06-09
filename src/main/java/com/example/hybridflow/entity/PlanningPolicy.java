@@ -1,10 +1,12 @@
 package com.example.hybridflow.entity;
+
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "planning_policies")
 @Data
@@ -14,7 +16,8 @@ public class PlanningPolicy {
     private Long id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
-@lombok.EqualsAndHashCode.Exclude @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private Company company;
     @Column(nullable = false, length = 150)
     private String name;

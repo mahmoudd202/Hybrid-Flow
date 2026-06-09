@@ -21,14 +21,9 @@ public class RequestResponseDTO {
     private String reason;
     private LocalDateTime createdAt;
 
-    // Requester info
     private Long requesterId;
     private String requesterEmail;
-
-    // Company info
     private Long companyId;
-
-    // Who handled it (null if still PENDING)
     private Long handledById;
     private String handledByEmail;
 }

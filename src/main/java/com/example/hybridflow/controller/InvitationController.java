@@ -19,7 +19,6 @@ import com.example.hybridflow.dto.InvitationResponseDTO;
 import com.example.hybridflow.entity.Company;
 import com.example.hybridflow.entity.Invitation;
 import com.example.hybridflow.entity.Team;
-import com.example.hybridflow.entity.User;
 import com.example.hybridflow.exception.BusinessValidationException;
 import com.example.hybridflow.repository.TeamRepository;
 import com.example.hybridflow.security.CustomUserDetails;
@@ -37,7 +36,7 @@ public class InvitationController {
     private final TeamRepository teamRepository;
 
     public InvitationController(InvitationService invitationService,
-                                TeamRepository teamRepository) {
+            TeamRepository teamRepository) {
         this.invitationService = invitationService;
         this.teamRepository = teamRepository;
     }
@@ -46,9 +45,9 @@ public class InvitationController {
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<InvitationResponseDTO> sendInvitation(
             @Valid @RequestBody InvitationRequestDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null)
+            return ResponseEntity.status(401).build();
 
         Company company = userDetails.getUser().getCompany();
 
@@ -63,13 +62,11 @@ public class InvitationController {
             throw new BusinessValidationException("You cannot invite users to another company's team.");
         }
 
-        
         Invitation invitation = invitationService.createAndSendInvitation(
                 dto.getEmail(),
                 dto.getRole(),
                 team,
-                company
-        );
+                company);
 
         InvitationResponseDTO response = InvitationResponseDTO.builder()
                 .id(invitation.getId())
@@ -89,13 +86,13 @@ public class InvitationController {
     @GetMapping("/pending")
     @PreAuthorize("hasRole(\'HR\')")
     public ResponseEntity<List<InvitationResponseDTO>> getPendingInvitationsForCompany(
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        List<InvitationResponseDTO> pendingInvitations = invitationService.getPendingInvitationsForCompany(userDetails.getUser());
+        List<InvitationResponseDTO> pendingInvitations = invitationService
+                .getPendingInvitationsForCompany(userDetails.getUser());
         return ResponseEntity.ok(pendingInvitations);
     }
 
@@ -103,8 +100,7 @@ public class InvitationController {
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<InvitationResponseDTO> resendInvitation(
             @PathVariable Long id,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -116,8 +112,7 @@ public class InvitationController {
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<Void> cancelInvitation(
             @PathVariable Long id,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -129,8 +124,7 @@ public class InvitationController {
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<InvitationResponseDTO> expireInvitation(
             @PathVariable Long id,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }

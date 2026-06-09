@@ -1,6 +1,8 @@
 package com.example.hybridflow.entity;
+
 import jakarta.persistence.*;
 import lombok.Data;
+
 @Entity
 @Table(name = "office")
 @Data
@@ -10,7 +12,8 @@ public class Office {
     private Long id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
-@lombok.EqualsAndHashCode.Exclude @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private Company company;
     @Column(nullable = false, length = 150)
     private String name;

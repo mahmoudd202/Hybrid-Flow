@@ -191,7 +191,6 @@ public class CsvService {
                         .findByTeamAndRole(team, Role.MANAGER)
                         .orElse(null);
 
-                // Demote old manager if exists
                 if (oldManager != null) {
                     oldManager.setRole(Role.EMPLOYEE);
                     userRepository.save(oldManager);
@@ -204,10 +203,8 @@ public class CsvService {
                 teamRepository.save(team);
             }
 
-           rowDto.setSaved(true);
+            rowDto.setSaved(true);
 
-            // This may slow bulk uploads for large CSVs.
-            // Consider async processing later.
             emailService.sendInvitationEmail(email, role.name());
 
         } catch (Exception e) {

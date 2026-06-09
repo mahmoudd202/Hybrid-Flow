@@ -18,7 +18,7 @@ public class MeetingDTO {
     private String title;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
-    private MeetingType type;       // OFFICE or ONLINE
+    private MeetingType type;
     private String hostEmail;
     private String officeName;
     private List<String> participatingTeamNames;

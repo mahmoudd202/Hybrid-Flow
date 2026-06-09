@@ -13,22 +13,10 @@ import java.util.List;
 @Repository
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
-  // Find all meetings a specific team is participating in
   List<Meeting> findByParticipatingTeams_Id(Long teamId);
 
-  // Find meetings hosted by a user
   List<Meeting> findByHostId(Long userId);
 
-  // Find all meetings happening in an office on a specific day
-  // I think this is a shitty method but again,, AI suggested and I don't think it
-  // is useful
-  // @Query("SELECT m FROM Meeting m WHERE m.office.id = :officeId AND m.startTime
-  // >= :start AND m.endTime <= :end")
-  // List<Meeting> findMeetingsInOffice(Long officeId, LocalDateTime start,
-  // LocalDateTime end);
-
-  // This one query handles both the "Team View" and the "Individual View"
-  // while preventing N+1 and LazyInitializationExceptions.
   @Query("""
           select distinct m from Meeting m
           join fetch m.office o
@@ -53,7 +41,6 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
       """)
   List<Meeting> findTeamMeetingsInRange(Long teamId, LocalDateTime rangeStart, LocalDateTime rangeEnd);
 
-  // HR view: all meetings across all teams in a company
   @Query("""
           select distinct m from Meeting m
           join fetch m.office o
@@ -67,7 +54,6 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
       """)
   List<Meeting> findCompanyMeetingsInRange(Long companyId, LocalDateTime rangeStart, LocalDateTime rangeEnd);
 
-  // HR office view: meetings happening at a specific office
   @Query("""
           select distinct m from Meeting m
           join fetch m.office o

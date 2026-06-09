@@ -1,7 +1,9 @@
 package com.example.hybridflow.entity;
+
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "personal_agendas")
 @Data
@@ -22,6 +24,7 @@ public class PersonalAgenda {
     private LocalDateTime createdAt;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
-@lombok.EqualsAndHashCode.Exclude @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private User owner;
 }

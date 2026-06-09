@@ -7,9 +7,6 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
-/**
- * Response returned by DELETE /api/schedules/unpublished.
- */
 @Data
 @Builder
 @NoArgsConstructor
@@ -18,7 +15,5 @@ public class DeleteUnpublishedSchedulesResponseDTO {
 
     private String status;
     private String message;
-
-    /** IDs of the schedule records that were permanently deleted. */
     private List<Long> deletedScheduleIds;
 }

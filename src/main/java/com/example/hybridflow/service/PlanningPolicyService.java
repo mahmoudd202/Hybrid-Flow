@@ -23,10 +23,6 @@ public class PlanningPolicyService {
 
     private final PlanningPolicyRepository planningPolicyRepository;
 
-    // -------------------------------------------------------------------------
-    // CREATE
-    // -------------------------------------------------------------------------
-
     @Transactional
     public PlanningPolicyResponseDTO createPolicy(PlanningPolicyRequestDTO dto, User currentUser) {
         Company company = validateHrContext(currentUser);
@@ -40,10 +36,6 @@ public class PlanningPolicyService {
         return toResponse(planningPolicyRepository.save(policy));
     }
 
-    // -------------------------------------------------------------------------
-    // READ — get all policies for the company
-    // -------------------------------------------------------------------------
-
     @Transactional(readOnly = true)
     public List<PlanningPolicyResponseDTO> getPoliciesByCompany(User currentUser) {
         Company company = validateHrContext(currentUser);
@@ -54,10 +46,6 @@ public class PlanningPolicyService {
                 .toList();
     }
 
-    // -------------------------------------------------------------------------
-    // READ — get single policy by id
-    // -------------------------------------------------------------------------
-
     @Transactional(readOnly = true)
     public PlanningPolicyResponseDTO getPolicyById(Long policyId, User currentUser) {
         Company company = validateHrContext(currentUser);
@@ -65,10 +53,6 @@ public class PlanningPolicyService {
         PlanningPolicy policy = findAndVerifyOwnership(policyId, company);
         return toResponse(policy);
     }
-
-    // -------------------------------------------------------------------------
-    // UPDATE
-    // -------------------------------------------------------------------------
 
     @Transactional
     public PlanningPolicyResponseDTO updatePolicy(Long policyId, PlanningPolicyRequestDTO dto, User currentUser) {
@@ -82,10 +66,6 @@ public class PlanningPolicyService {
         return toResponse(planningPolicyRepository.save(policy));
     }
 
-    // -------------------------------------------------------------------------
-    // DELETE
-    // -------------------------------------------------------------------------
-
     @Transactional
     public void deletePolicy(Long policyId, User currentUser) {
         Company company = validateHrContext(currentUser);
@@ -93,10 +73,6 @@ public class PlanningPolicyService {
         PlanningPolicy policy = findAndVerifyOwnership(policyId, company);
         planningPolicyRepository.delete(policy);
     }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
 
     private Company validateHrContext(User user) {
         if (user == null || user.getId() == null) {

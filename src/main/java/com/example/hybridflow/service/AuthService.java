@@ -93,7 +93,6 @@ public class AuthService {
     public EmailCheckResponseDTO checkEmail(String email) {
         Instant now = Instant.now();
 
-        // 1. Check Invitation table
         Optional<Invitation> invitationOptional = invitationRepository
                 .findFirstByEmailAndUsedFalseAndExpiryDateAfter(email, now);
 
@@ -105,7 +104,6 @@ public class AuthService {
                     .build();
         }
 
-        // 2. Check User table
         Optional<User> userOptional = userRepository.findByEmail(email);
 
         if (userOptional.isPresent()) {
@@ -125,7 +123,6 @@ public class AuthService {
             }
         }
 
-        // 3. Not found
         return EmailCheckResponseDTO.builder()
                 .status("NOT_AUTHORIZED")
                 .redirectPath(null)
@@ -138,7 +135,6 @@ public class AuthService {
         String email = request.getEmail();
         Instant now = Instant.now();
 
-        // Check if user already exists and is enabled
         Optional<User> existingUserOpt = userRepository.findByEmail(email);
         if (existingUserOpt.isPresent() && existingUserOpt.get().isEnabled()) {
             throw new BusinessValidationException("A user with this email is already registered and active.");
@@ -148,12 +144,10 @@ public class AuthService {
         Invitation invitation = null;
 
         if (existingUserOpt.isPresent()) {
-            // Case: User exists but disabled (e.g., from CSV upload)
             user = existingUserOpt.get();
             user.setPassword(passwordEncoder.encode(request.getPassword()));
             user = userRepository.save(user);
         } else {
-            // Case: User doesn't exist, must have a valid invitation
             invitation = invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(email, now)
                     .orElseThrow(() -> new BusinessValidationException("No valid invitation found for this email."));
 
@@ -164,7 +158,7 @@ public class AuthService {
             user.setTeam(invitation.getTeam());
             user.setCompany(invitation.getCompany());
             user.setProvider(AuthProvider.LOCAL);
-            user.setEnabled(false); // Still disabled until OTP verification
+            user.setEnabled(false);
             user = userRepository.save(user);
         }
 
@@ -174,7 +168,6 @@ public class AuthService {
             teamRepository.save(team);
         }
 
-        // Create or update UserProfile
         UserProfile profile = profileRepository.findByUserId(user.getId()).orElse(new UserProfile());
         profile.setUser(user);
         profile.setFirstName(request.getFirstName());
@@ -183,12 +176,10 @@ public class AuthService {
         profile.setNationality(request.getNationality());
         profileRepository.save(profile);
 
-        // Mark invitation as used if it exists
         if (invitation != null) {
             invitationService.markAsUsed(invitation);
         }
 
-        // Generate and send OTP for verification
         String otp = otpService.generateOtp();
         UserVerification verification = verificationRepository.findByUserId(user.getId())
                 .orElse(new UserVerification());

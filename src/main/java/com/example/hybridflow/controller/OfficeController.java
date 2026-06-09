@@ -24,52 +24,35 @@ public class OfficeController {
 
     private final OfficeService officeService;
 
-    /**
-     * office.getByCompany
-     * Frontend usage: fetch all offices for the authenticated HR user's company.
-     */
     @GetMapping("/company")
     @PreAuthorize("hasAnyRole('MANAGER','HR')")
     public ResponseEntity<List<OfficeResponseDTO>> getByCompany(
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
 
         return ResponseEntity.ok(
-                officeService.getByCompany(userDetails.getUser())
-        );
+                officeService.getByCompany(userDetails.getUser()));
     }
 
-    /**
-     * office.getFirstByCompany
-     * Frontend usage: first-office enforcement before allowing HR dashboard access.
-     */
     @GetMapping("/company/first")
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<FirstOfficeResponseDTO> getFirstByCompany(
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
 
         return ResponseEntity.ok(
-                officeService.getFirstByCompany(userDetails.getUser())
-        );
+                officeService.getFirstByCompany(userDetails.getUser()));
     }
 
-    /**
-     * office.create
-     * Frontend usage: create first office or additional offices.
-     */
     @PostMapping
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<OfficeResponseDTO> createOffice(
             @Valid @RequestBody OfficeCreateRequestDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
@@ -83,8 +66,7 @@ public class OfficeController {
     public ResponseEntity<OfficeResponseDTO> updateOffice(
             @PathVariable Long officeId,
             @Valid @RequestBody OfficeCreateRequestDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
@@ -97,8 +79,7 @@ public class OfficeController {
     @PreAuthorize("hasRole('HR')")
     public ResponseEntity<Void> deleteOffice(
             @PathVariable Long officeId,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }

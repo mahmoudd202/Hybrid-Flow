@@ -6,5 +6,5 @@ import java.util.Set;
 
 @Data
 public class PreferredWorkDaysRequestDTO {
-    private Set<DayOfWeek> preferredDays; // Set ensures uniqueness, max 2 will be validated in service
+    private Set<DayOfWeek> preferredDays;
 }

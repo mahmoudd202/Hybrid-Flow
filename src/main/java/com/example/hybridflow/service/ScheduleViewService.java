@@ -14,17 +14,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Central service for the schedule-viewing feature.
- * <p>
- * Access rules:
- * <ul>
- * <li><b>EMPLOYEE</b> – can view their own team's schedule (or personal
- * only)</li>
- * <li><b>MANAGER</b> – can view their managed team's schedule</li>
- * <li><b>HR</b> – can view every team's schedule across the entire company</li>
- * </ul>
- */
 @Service
 @Transactional(readOnly = true)
 public class ScheduleViewService {
@@ -58,7 +47,6 @@ public class ScheduleViewService {
 
         UserScheduleDTO userRow = buildUserRow(currentUser, entries);
 
-        // Meetings are scoped to the user's team for the date range
         List<MeetingDTO> meetings = fetchTeamMeetings(currentUser.getTeam().getId(), from, to);
 
         TeamScheduleDTO teamDto = new TeamScheduleDTO();
@@ -87,7 +75,6 @@ public class ScheduleViewService {
 
         UserScheduleDTO userRow = buildUserRow(targetEmployee, entries);
 
-        // Meetings scoped to the target employee's team
         List<MeetingDTO> meetings = targetEmployee.getTeam() != null
                 ? fetchTeamMeetings(targetEmployee.getTeam().getId(), from, to)
                 : List.of();
@@ -130,25 +117,19 @@ public class ScheduleViewService {
 
         Long companyId = currentUser.getCompany().getId();
 
-        // Fetch all teams in the company
         List<Team> teams = teamRepository.findByCompanyId(companyId);
 
-        // Fetch all entries for the company in one query
         List<ScheduleEntry> allEntries = scheduleEntryRepository.findPublishedEntriesForCompany(
                 companyId, from, to);
 
-        // Fetch all meetings for the company in one query
         List<Meeting> allMeetings = meetingRepository.findCompanyMeetingsInRange(
                 companyId,
                 from.atStartOfDay(),
                 to.plusDays(1).atStartOfDay());
-
-        // Group entries by team
         Map<Long, List<ScheduleEntry>> entriesByTeam = allEntries.stream()
                 .collect(Collectors.groupingBy(
                         se -> se.getSchedule().getTeam().getId()));
 
-        // Group meetings by team (a meeting can belong to multiple teams)
         Map<Long, List<Meeting>> meetingsByTeam = new HashMap<>();
         for (Meeting m : allMeetings) {
             for (Team t : m.getParticipatingTeams()) {
@@ -182,15 +163,12 @@ public class ScheduleViewService {
         Office office = officeRepository.findById(officeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Office not found"));
 
-        // Ensure the office belongs to the HR's company
         if (!office.getCompany().getId().equals(currentUser.getCompany().getId())) {
             throw new AccessDeniedException("You cannot view schedules of an office outside your company");
         }
 
-        // All teams in this office
         List<Team> officeTeams = teamRepository.findByOfficeId(officeId);
 
-        // Batch-fetch entries and meetings for this office
         List<ScheduleEntry> allEntries = scheduleEntryRepository.findPublishedEntriesForOffice(
                 officeId, from, to);
 
@@ -199,16 +177,12 @@ public class ScheduleViewService {
                 from.atStartOfDay(),
                 to.plusDays(1).atStartOfDay());
 
-        // Group entries by team
         Map<Long, List<ScheduleEntry>> entriesByTeam = allEntries.stream()
                 .collect(Collectors.groupingBy(
                         se -> se.getSchedule().getTeam().getId()));
-
-        // Group meetings by team
         Map<Long, List<Meeting>> meetingsByTeam = new HashMap<>();
         for (Meeting m : allMeetings) {
             for (Team t : m.getParticipatingTeams()) {
-                // Only include if the team is actually in this office
                 if (officeTeams.stream().anyMatch(ot -> ot.getId().equals(t.getId()))) {
                     meetingsByTeam.computeIfAbsent(t.getId(), k -> new ArrayList<>()).add(m);
                 }
@@ -242,12 +216,9 @@ public class ScheduleViewService {
     private TeamScheduleDTO buildTeamScheduleFromData(
             Team team, LocalDate from, LocalDate to,
             List<ScheduleEntry> entries, List<Meeting> meetings) {
-        // Group entries by user
         Map<Long, List<ScheduleEntry>> entriesByUser = entries.stream()
                 .collect(Collectors.groupingBy(se -> se.getUser().getId()));
 
-        // Build user rows — also include team members with no entries (so the grid
-        // shows them)
         List<User> teamMembers = userRepository.findAllByTeamId(team.getId());
         List<UserScheduleDTO> memberDtos = new ArrayList<>();
         for (User member : teamMembers) {
@@ -255,7 +226,6 @@ public class ScheduleViewService {
             memberDtos.add(buildUserRow(member, userEntries));
         }
 
-        // Sort: manager first, then alphabetically by email
         memberDtos.sort(Comparator
                 .comparing((UserScheduleDTO u) -> !"MANAGER".equals(u.getRoleName()))
                 .thenComparing(UserScheduleDTO::getEmail));
@@ -357,11 +327,9 @@ public class ScheduleViewService {
         }
 
         if (role == Role.EMPLOYEE) {
-            // Self-view is always allowed
             if (targetEmployee.getId().equals(requester.getId())) {
                 return;
             }
-            // Same-team only
             if (requester.getTeam() == null || targetEmployee.getTeam() == null ||
                     !requester.getTeam().getId().equals(targetEmployee.getTeam().getId())) {
                 throw new AccessDeniedException("Employee can only view own or same-team schedules");
@@ -376,7 +344,6 @@ public class ScheduleViewService {
         Role role = user.getRole();
 
         if (role == Role.HR) {
-            // HR may view any team, but only within their own company
             if (user.getCompany() == null || targetTeam.getCompany() == null ||
                     !targetTeam.getCompany().getId().equals(user.getCompany().getId())) {
                 throw new AccessDeniedException("You cannot view schedules of another company");

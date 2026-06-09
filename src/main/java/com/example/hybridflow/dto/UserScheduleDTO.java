@@ -6,17 +6,15 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
-/**
- * One row in the schedule grid — all entries for a single user.
- */
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserScheduleDTO {
     private Long userId;
     private String email;
-    private String firstName; // from UserProfile
-    private String lastName; // from UserProfile
-    private String roleName; // HR / MANAGER / EMPLOYEE
+    private String firstName;
+    private String lastName;
+    private String roleName;
     private List<ScheduleEntryDTO> entries;
 }

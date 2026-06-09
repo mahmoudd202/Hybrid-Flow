@@ -26,5 +26,5 @@ public class Team {
     @JoinColumn(name = "manager_id")
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
-    private User manager; // Team table owns the manager FK
+    private User manager; 
 }

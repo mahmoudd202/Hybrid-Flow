@@ -17,24 +17,6 @@ import java.time.temporal.WeekFields;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Runs the Gurobi optimisation in a dedicated background thread.
- *
- * Must be a separate Spring bean from ScheduleGenerationService so that
- * Spring's @Async proxy intercepts the call. Self-invocation inside the
- * same bean bypasses the proxy and executes synchronously.
- *
- * The Gurobi model is built and solved OUTSIDE any database transaction
- * (no @Transactional here) so no DB connection is held during the solve.
- * Persistence is delegated to ScheduleGenerationPersistenceService which
- * opens a short-lived transaction only when the solution is ready.
- *
- * FAILED / INFEASIBLE handling:
- *   Any exception or non-OPTIMAL status calls persistenceService.markFailed()
- *   with a human-readable message. The polling endpoint returns:
- *     { jobStatus: "FAILED", errorMessage: "<reason>" }
- *   — identical semantics to the old synchronous status="FAILED" response.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -49,13 +31,6 @@ public class ScheduleGenerationAsyncService {
     private final PlanningPolicyRepository planningPolicyRepository;
     private final ScheduleGenerationPersistenceService persistenceService;
 
-    /**
-     * Async entry point — called by ScheduleGenerationService after creating
-     * the PENDING run row and returning 202 to the client.
-     *
-     * All parameters are primitive-safe (IDs, not JPA-managed entities) so
-     * they can safely cross the thread boundary without a detached-entity issue.
-     */
     @Async("gurobiExecutor")
     public void runAsync(
             Long runId,
@@ -64,7 +39,6 @@ public class ScheduleGenerationAsyncService {
             List<Long> teamIds,
             Long policyId) {
 
-        // Load entities inside async thread to avoid detached entity & lazy loading issues
         ScheduleOptimizationRun run = runRepository.findById(runId)
                 .orElseThrow(() -> new ResourceNotFoundException("Optimization run not found."));
 
@@ -78,7 +52,6 @@ public class ScheduleGenerationAsyncService {
         PlanningPolicy policy = planningPolicyRepository.findById(policyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Planning policy not found."));
 
-        // ── Mark RUNNING ──────────────────────────────────────────────────────
         run.setJobStatus(OptimizationJobStatus.RUNNING);
         runRepository.save(run);
 
@@ -94,11 +67,9 @@ public class ScheduleGenerationAsyncService {
                 return;
             }
 
-            Map<LocalDate, Long> existingOfficeUsageByDate =
-                    calculateExistingOfficeUsageByDate(
-                            office.getId(), request.getStartDate(), request.getEndDate());
+            Map<LocalDate, Long> existingOfficeUsageByDate = calculateExistingOfficeUsageByDate(
+                    office.getId(), request.getStartDate(), request.getEndDate());
 
-            // ── Build Gurobi model ────────────────────────────────────────────
             env = new GRBEnv(true);
             env.set("LogToConsole", "0");
             env.start();
@@ -106,7 +77,6 @@ public class ScheduleGenerationAsyncService {
             model = new GRBModel(env);
             model.set(GRB.StringAttr.ModelName, "HybridFlowSchedule");
 
-            // Decision variable: x[userId_date] = 1 → user is OFFICE on that date
             Map<String, GRBVar> x = new HashMap<>();
             for (User user : users) {
                 for (LocalDate date : workDates) {
@@ -115,7 +85,6 @@ public class ScheduleGenerationAsyncService {
                 }
             }
 
-            // Constraint 1: Office capacity per day (minus existing published usage)
             for (LocalDate date : workDates) {
                 long existingUsage = existingOfficeUsageByDate.getOrDefault(date, 0L);
                 long remainingCapacity = office.getMaxCapacity() - existingUsage;
@@ -135,11 +104,10 @@ public class ScheduleGenerationAsyncService {
                         "Capacity_" + date);
             }
 
-            // Constraint 2: Min/max office days per ISO week
             WeekFields iso = WeekFields.ISO;
             Map<String, List<LocalDate>> datesByWeek = workDates.stream()
-                    .collect(Collectors.groupingBy(date ->
-                            date.get(iso.weekBasedYear()) + "-W" + date.get(iso.weekOfWeekBasedYear())));
+                    .collect(Collectors.groupingBy(
+                            date -> date.get(iso.weekBasedYear()) + "-W" + date.get(iso.weekOfWeekBasedYear())));
 
             for (User user : users) {
                 for (Map.Entry<String, List<LocalDate>> weekEntry : datesByWeek.entrySet()) {
@@ -159,7 +127,6 @@ public class ScheduleGenerationAsyncService {
                 }
             }
 
-            // Constraint 3: Max consecutive office days
             int maxConsecutiveOfficeDays = policy.getMaxConsecutiveOfficeDays();
             for (User user : users) {
                 for (int i = 0; i <= workDates.size() - (maxConsecutiveOfficeDays + 1); i++) {
@@ -172,13 +139,13 @@ public class ScheduleGenerationAsyncService {
                 }
             }
 
-            // Constraint 4: Team co-presence
             for (Team team : teams) {
                 List<User> members = users.stream()
                         .filter(u -> u.getTeam() != null && u.getTeam().getId().equals(team.getId()))
                         .collect(Collectors.toList());
 
-                if (members.isEmpty()) continue;
+                if (members.isEmpty())
+                    continue;
 
                 int teamSize = members.size();
                 int thresholdCount = (int) Math.ceil(
@@ -217,7 +184,6 @@ public class ScheduleGenerationAsyncService {
                         "MinSharedDays_Team_" + team.getId());
             }
 
-            // Objective: weighted multi-term (preference 0.4, distribution 0.2, clustering 0.2)
             Map<Long, Set<DayOfWeek>> preferredDaysByUser = new HashMap<>();
             for (User user : users) {
                 Set<DayOfWeek> preferredDays = preferredWorkDayRepository
@@ -235,14 +201,12 @@ public class ScheduleGenerationAsyncService {
             for (User user : users) {
                 Set<DayOfWeek> preferredDays = preferredDaysByUser.get(user.getId());
 
-                // Term A: preference satisfaction (weight 0.4)
                 for (LocalDate date : workDates) {
                     if (preferredDays.contains(date.getDayOfWeek())) {
                         objective.addTerm(-0.4, x.get(variableKey(user.getId(), date)));
                     }
                 }
 
-                // Term B: weekly distribution evenness (weight 0.2)
                 for (int wi = 0; wi < orderedWeekKeys.size() - 1; wi++) {
                     String wk1 = orderedWeekKeys.get(wi);
                     String wk2 = orderedWeekKeys.get(wi + 1);
@@ -277,7 +241,6 @@ public class ScheduleGenerationAsyncService {
                     objective.addTerm(-0.2, diffVar);
                 }
 
-                // Term C: penalise consecutive office-day clusters (weight 0.2)
                 for (int di = 0; di < workDates.size() - 1; di++) {
                     LocalDate today = workDates.get(di);
                     LocalDate tomorrow = workDates.get(di + 1);
@@ -297,7 +260,6 @@ public class ScheduleGenerationAsyncService {
 
             int status = model.get(GRB.IntAttr.Status);
 
-            // ── Capture raw stats before dispose() ───────────────────────────
             run.setGurobiStatusCode(status);
             run.setGurobiStatusLabel(resolveStatusLabel(status));
 
@@ -322,7 +284,8 @@ public class ScheduleGenerationAsyncService {
                         for (GRBConstr constr : constrs) {
                             if (constr.get(GRB.IntAttr.IISConstr) > 0) {
                                 String name = constr.get(GRB.StringAttr.ConstrName);
-                                if (name == null) continue;
+                                if (name == null)
+                                    continue;
 
                                 if (name.startsWith("Capacity_")) {
                                     String dateStr = name.substring("Capacity_".length());
@@ -338,19 +301,22 @@ public class ScheduleGenerationAsyncService {
                                             try {
                                                 Long userId = Long.parseLong(userIdStr);
                                                 User user = userMap.get(userId);
-                                                String emailDisplay = user != null ? user.getEmail() : "User ID " + userId;
+                                                String emailDisplay = user != null ? user.getEmail()
+                                                        : "User ID " + userId;
                                                 List<LocalDate> weekDates = datesByWeek.get(weekKey);
                                                 int weekDatesCount = weekDates != null ? weekDates.size() : 0;
 
                                                 if (weekDatesCount < policy.getMinOfficeDaysPerWeek()) {
                                                     dateRangeWarnings.add(String.format(
-                                                        "Week %s only has %d working day(s) in the selected date range, which is less than the required %d office days per week (conflict for %s).",
-                                                        weekKey, weekDatesCount, policy.getMinOfficeDaysPerWeek(), emailDisplay
-                                                    ));
+                                                            "Week %s only has %d working day(s) in the selected date range, which is less than the required %d office days per week (conflict for %s).",
+                                                            weekKey, weekDatesCount, policy.getMinOfficeDaysPerWeek(),
+                                                            emailDisplay));
                                                 } else {
-                                                    minOfficeByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>()).add(emailDisplay);
+                                                    minOfficeByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>())
+                                                            .add(emailDisplay);
                                                 }
-                                            } catch (NumberFormatException ignored) {}
+                                            } catch (NumberFormatException ignored) {
+                                            }
                                         }
                                     }
                                 } else if (name.startsWith("MaxOffice_")) {
@@ -364,9 +330,12 @@ public class ScheduleGenerationAsyncService {
                                             try {
                                                 Long userId = Long.parseLong(userIdStr);
                                                 User user = userMap.get(userId);
-                                                String emailDisplay = user != null ? user.getEmail() : "User ID " + userId;
-                                                maxOfficeByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>()).add(emailDisplay);
-                                            } catch (NumberFormatException ignored) {}
+                                                String emailDisplay = user != null ? user.getEmail()
+                                                        : "User ID " + userId;
+                                                maxOfficeByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>())
+                                                        .add(emailDisplay);
+                                            } catch (NumberFormatException ignored) {
+                                            }
                                         }
                                     }
                                 } else if (name.startsWith("MaxConsecutive_")) {
@@ -379,9 +348,11 @@ public class ScheduleGenerationAsyncService {
                                             try {
                                                 Long userId = Long.parseLong(userIdStr);
                                                 User user = userMap.get(userId);
-                                                String emailDisplay = user != null ? user.getEmail() : "User ID " + userId;
+                                                String emailDisplay = user != null ? user.getEmail()
+                                                        : "User ID " + userId;
                                                 consecutiveUsers.add(emailDisplay);
-                                            } catch (NumberFormatException ignored) {}
+                                            } catch (NumberFormatException ignored) {
+                                            }
                                         }
                                     }
                                 } else if (name.startsWith("MinSharedDays_Team_")) {
@@ -391,10 +362,12 @@ public class ScheduleGenerationAsyncService {
                                         Team team = teamMap.get(teamId);
                                         String teamName = team != null ? team.getName() : "Team ID " + teamId;
                                         teamSharedDaysIssues.add(teamName);
-                                    } catch (NumberFormatException ignored) {}
+                                    } catch (NumberFormatException ignored) {
+                                    }
                                 } else if (name.startsWith("CoPresenceLower_") || name.startsWith("CoPresenceUpper_")) {
                                     boolean isLower = name.startsWith("CoPresenceLower_");
-                                    String details = name.substring(isLower ? "CoPresenceLower_".length() : "CoPresenceUpper_".length());
+                                    String details = name.substring(
+                                            isLower ? "CoPresenceLower_".length() : "CoPresenceUpper_".length());
                                     int underscore = details.indexOf('_');
                                     if (underscore != -1) {
                                         String teamIdStr = details.substring(0, underscore);
@@ -403,22 +376,27 @@ public class ScheduleGenerationAsyncService {
                                             Long teamId = Long.parseLong(teamIdStr);
                                             Team team = teamMap.get(teamId);
                                             String teamName = team != null ? team.getName() : "Team ID " + teamId;
-                                            String label = isLower ? "minimum copresence limit" : "maximum copresence limit";
-                                            coPresenceIssues.computeIfAbsent(dateStr, k -> new ArrayList<>()).add(String.format("'%s' (%s)", teamName, label));
-                                        } catch (NumberFormatException ignored) {}
+                                            String label = isLower ? "minimum copresence limit"
+                                                    : "maximum copresence limit";
+                                            coPresenceIssues.computeIfAbsent(dateStr, k -> new ArrayList<>())
+                                                    .add(String.format("'%s' (%s)", teamName, label));
+                                        } catch (NumberFormatException ignored) {
+                                        }
                                     }
                                 }
                             }
                         }
 
                         StringBuilder sb = new StringBuilder();
-                        sb.append("Schedule generation is not possible because the requirements conflict with each other. Here is what is causing the issue:\n");
+                        sb.append(
+                                "Schedule generation is not possible because the requirements conflict with each other. Here is what is causing the issue:\n");
                         boolean hasIssue = false;
 
                         if (!dateRangeWarnings.isEmpty()) {
                             hasIssue = true;
                             sb.append("\n- Date Range / Calendar Alignment:\n");
-                            List<String> uniqueWarnings = dateRangeWarnings.stream().distinct().sorted().collect(Collectors.toList());
+                            List<String> uniqueWarnings = dateRangeWarnings.stream().distinct().sorted()
+                                    .collect(Collectors.toList());
                             for (String warn : uniqueWarnings) {
                                 sb.append("  * ").append(warn).append("\n");
                             }
@@ -427,59 +405,76 @@ public class ScheduleGenerationAsyncService {
                         if (!capacityDates.isEmpty()) {
                             hasIssue = true;
                             sb.append(String.format("\n- Office Capacity Limits (Max %d):\n", office.getMaxCapacity()));
-                            List<String> uniqueDates = capacityDates.stream().distinct().sorted().collect(Collectors.toList());
-                            sb.append("  * Capacity constraint is too restrictive on: ").append(String.join(", ", uniqueDates)).append("\n");
+                            List<String> uniqueDates = capacityDates.stream().distinct().sorted()
+                                    .collect(Collectors.toList());
+                            sb.append("  * Capacity constraint is too restrictive on: ")
+                                    .append(String.join(", ", uniqueDates)).append("\n");
                         }
 
                         if (!minOfficeByWeek.isEmpty()) {
                             hasIssue = true;
-                            sb.append(String.format("\n- Weekly Minimum Office Days (%d days required):\n", policy.getMinOfficeDaysPerWeek()));
-                            List<String> sortedWeekKeys = minOfficeByWeek.keySet().stream().sorted().collect(Collectors.toList());
+                            sb.append(String.format("\n- Weekly Minimum Office Days (%d days required):\n",
+                                    policy.getMinOfficeDaysPerWeek()));
+                            List<String> sortedWeekKeys = minOfficeByWeek.keySet().stream().sorted()
+                                    .collect(Collectors.toList());
                             for (String weekKey : sortedWeekKeys) {
                                 List<String> userEmails = minOfficeByWeek.get(weekKey);
                                 if (userEmails != null && !userEmails.isEmpty()) {
-                                    List<String> uniqueEmails = userEmails.stream().distinct().sorted().collect(Collectors.toList());
+                                    List<String> uniqueEmails = userEmails.stream().distinct().sorted()
+                                            .collect(Collectors.toList());
                                     sb.append("  * In week ").append(weekKey).append(" for: ")
-                                      .append(String.join(", ", uniqueEmails)).append("\n");
+                                            .append(String.join(", ", uniqueEmails)).append("\n");
                                 }
                             }
                         }
 
                         if (!maxOfficeByWeek.isEmpty()) {
                             hasIssue = true;
-                            sb.append(String.format("\n- Weekly Maximum Office Days (Max %d days allowed):\n", policy.getMaxOfficeDaysPerWeek()));
-                            List<String> sortedWeekKeys = maxOfficeByWeek.keySet().stream().sorted().collect(Collectors.toList());
+                            sb.append(String.format("\n- Weekly Maximum Office Days (Max %d days allowed):\n",
+                                    policy.getMaxOfficeDaysPerWeek()));
+                            List<String> sortedWeekKeys = maxOfficeByWeek.keySet().stream().sorted()
+                                    .collect(Collectors.toList());
                             for (String weekKey : sortedWeekKeys) {
                                 List<String> userEmails = maxOfficeByWeek.get(weekKey);
                                 if (userEmails != null && !userEmails.isEmpty()) {
-                                    List<String> uniqueEmails = userEmails.stream().distinct().sorted().collect(Collectors.toList());
+                                    List<String> uniqueEmails = userEmails.stream().distinct().sorted()
+                                            .collect(Collectors.toList());
                                     sb.append("  * In week ").append(weekKey).append(" for: ")
-                                      .append(String.join(", ", uniqueEmails)).append("\n");
+                                            .append(String.join(", ", uniqueEmails)).append("\n");
                                 }
                             }
                         }
 
                         if (!consecutiveUsers.isEmpty()) {
                             hasIssue = true;
-                            sb.append(String.format("\n- Maximum Consecutive Office Days (Max %d days allowed):\n", policy.getMaxConsecutiveOfficeDays()));
-                            List<String> uniqueUsers = consecutiveUsers.stream().distinct().sorted().collect(Collectors.toList());
-                            sb.append("  * Constraint violated for: ").append(String.join(", ", uniqueUsers)).append("\n");
+                            sb.append(String.format("\n- Maximum Consecutive Office Days (Max %d days allowed):\n",
+                                    policy.getMaxConsecutiveOfficeDays()));
+                            List<String> uniqueUsers = consecutiveUsers.stream().distinct().sorted()
+                                    .collect(Collectors.toList());
+                            sb.append("  * Constraint violated for: ").append(String.join(", ", uniqueUsers))
+                                    .append("\n");
                         }
 
                         if (!teamSharedDaysIssues.isEmpty()) {
                             hasIssue = true;
-                            sb.append(String.format("\n- Minimum Team Shared Days (%d days required):\n", policy.getMinTeamSharedDays()));
-                            List<String> uniqueTeams = teamSharedDaysIssues.stream().distinct().sorted().collect(Collectors.toList());
-                            sb.append("  * The following teams could not meet this requirement: ").append(String.join(", ", uniqueTeams)).append("\n");
+                            sb.append(String.format("\n- Minimum Team Shared Days (%d days required):\n",
+                                    policy.getMinTeamSharedDays()));
+                            List<String> uniqueTeams = teamSharedDaysIssues.stream().distinct().sorted()
+                                    .collect(Collectors.toList());
+                            sb.append("  * The following teams could not meet this requirement: ")
+                                    .append(String.join(", ", uniqueTeams)).append("\n");
                         }
 
                         if (!coPresenceIssues.isEmpty()) {
                             hasIssue = true;
                             sb.append("\n- Team Co-Presence Thresholds:\n");
-                            List<String> sortedDates = coPresenceIssues.keySet().stream().sorted().collect(Collectors.toList());
+                            List<String> sortedDates = coPresenceIssues.keySet().stream().sorted()
+                                    .collect(Collectors.toList());
                             for (String d : sortedDates) {
-                                List<String> issues = coPresenceIssues.get(d).stream().distinct().sorted().collect(Collectors.toList());
-                                sb.append("  * On ").append(d).append(": ").append(String.join(", ", issues)).append("\n");
+                                List<String> issues = coPresenceIssues.get(d).stream().distinct().sorted()
+                                        .collect(Collectors.toList());
+                                sb.append("  * On ").append(d).append(": ").append(String.join(", ", issues))
+                                        .append("\n");
                             }
                         }
 
@@ -490,19 +485,18 @@ public class ScheduleGenerationAsyncService {
                         }
                     } catch (Exception iisEx) {
                         log.error("Failed to compute or parse Gurobi IIS: {}", iisEx.getMessage(), iisEx);
-                        message = "Model is infeasible. The selected policy constraints cannot all be satisfied. (IIS computation failed: " + iisEx.getMessage() + ")";
+                        message = "Model is infeasible. The selected policy constraints cannot all be satisfied. (IIS computation failed: "
+                                + iisEx.getMessage() + ")";
                     }
                 } else {
                     message = "Gurobi did not find an optimal solution. Status code: " + status;
                 }
 
-                // Persist stat we have (status) before marking failed
                 runRepository.save(run);
                 persistenceService.markFailed(run, message);
                 return;
             }
 
-            // OPTIMAL — capture all stats
             run.setObjectiveValue(model.get(GRB.DoubleAttr.ObjVal));
             run.setObjectiveBound(model.get(GRB.DoubleAttr.ObjBound));
             run.setMipGap(model.get(GRB.DoubleAttr.MIPGap));
@@ -512,7 +506,6 @@ public class ScheduleGenerationAsyncService {
             run.setNumIterations(model.get(GRB.DoubleAttr.IterCount));
             run.setNumNodes(model.get(GRB.DoubleAttr.NodeCount));
 
-            // Extract solution matrix BEFORE dispose()
             Map<Long, Map<LocalDate, Boolean>> solution = new HashMap<>();
             for (User user : users) {
                 Map<LocalDate, Boolean> userSchedule = new HashMap<>();
@@ -524,13 +517,10 @@ public class ScheduleGenerationAsyncService {
                 solution.put(user.getId(), userSchedule);
             }
 
-            // ── Dispose Gurobi resources ──────────────────────────────────────
             model.dispose();
             model = null;
             env.dispose();
             env = null;
-
-            // ── Hand off to persistence service (opens its own transaction) ──
             persistenceService.saveResults(
                     run, office, teams, users, workDates,
                     solution, policy,
@@ -544,15 +534,19 @@ public class ScheduleGenerationAsyncService {
             persistenceService.markFailed(run, "Unexpected error: " + e.getMessage());
         } finally {
             if (model != null) {
-                try { model.dispose(); } catch (Exception ignored) {}
+                try {
+                    model.dispose();
+                } catch (Exception ignored) {
+                }
             }
             if (env != null) {
-                try { env.dispose(); } catch (Exception ignored) {}
+                try {
+                    env.dispose();
+                } catch (Exception ignored) {
+                }
             }
         }
     }
-
-    // ── Helpers (duplicated from original service — kept local to avoid coupling) ──
 
     private String variableKey(Long userId, LocalDate date) {
         return userId + "_" + date;
@@ -582,14 +576,14 @@ public class ScheduleGenerationAsyncService {
 
     private String resolveStatusLabel(int status) {
         return switch (status) {
-            case GRB.OPTIMAL    -> "OPTIMAL";
+            case GRB.OPTIMAL -> "OPTIMAL";
             case GRB.INFEASIBLE -> "INFEASIBLE";
             case GRB.INF_OR_UNBD -> "INF_OR_UNBD";
-            case GRB.UNBOUNDED  -> "UNBOUNDED";
+            case GRB.UNBOUNDED -> "UNBOUNDED";
             case GRB.TIME_LIMIT -> "TIME_LIMIT";
             case GRB.ITERATION_LIMIT -> "ITERATION_LIMIT";
             case GRB.NODE_LIMIT -> "NODE_LIMIT";
-            default             -> "UNKNOWN_" + status;
+            default -> "UNKNOWN_" + status;
         };
     }
 }

@@ -81,14 +81,12 @@ public class TaskMapper {
     public TaskDetailsResponseDTO toTaskDetailsResponse(
             Task task,
             List<TaskAssignment> assignments,
-            List<String> excludedAssigneeEmails
-    ) {
+            List<String> excludedAssigneeEmails) {
         return TaskDetailsResponseDTO.builder()
                 .task(toTaskResponse(task))
                 .assignments(toAssignmentResponseList(assignments))
                 .excludedAssigneeEmails(
-                        excludedAssigneeEmails != null ? excludedAssigneeEmails : List.of()
-                )
+                        excludedAssigneeEmails != null ? excludedAssigneeEmails : List.of())
                 .build();
     }
 }

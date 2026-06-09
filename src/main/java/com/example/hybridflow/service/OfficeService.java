@@ -85,7 +85,6 @@ public class OfficeService {
 
         String normalizedName = normalizeName(dto.getName());
 
-        // Check for duplicate name (excluding the current office being updated)
         officeRepository.findByNameAndCompanyId(normalizedName, company.getId())
                 .ifPresent(existing -> {
                     if (!existing.getId().equals(officeId)) {
@@ -112,9 +111,9 @@ public class OfficeService {
             throw new BusinessValidationException("You do not have access to this office.");
         }
 
-        // Check if any teams are assigned to this office using teamRepository.findByOfficeId
         if (!teamRepository.findByOfficeId(officeId).isEmpty()) {
-            throw new BusinessValidationException("Cannot delete office because it is currently assigned to one or more teams.");
+            throw new BusinessValidationException(
+                    "Cannot delete office because it is currently assigned to one or more teams.");
         }
 
         officeRepository.delete(office);

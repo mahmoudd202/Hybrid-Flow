@@ -16,5 +16,4 @@ public class CsvUploadResponse {
     private int savedRows;
     private List<CsvRowDto> data;
 
-
 }

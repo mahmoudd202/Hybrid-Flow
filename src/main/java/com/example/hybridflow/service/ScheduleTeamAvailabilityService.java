@@ -48,11 +48,6 @@ public class ScheduleTeamAvailabilityService {
             throw new AccessDeniedException("You can only generate schedules for offices in your company.");
         }
 
-        /*
-         * Correct business rule:
-         * HR can choose ANY team in the company.
-         * Do not filter teams by officeId.
-         */
         List<Team> teams = teamRepository.findByCompanyIdOrderByNameAsc(companyId);
 
         List<AvailableScheduleTeamDTO> availableTeams = new ArrayList<>();

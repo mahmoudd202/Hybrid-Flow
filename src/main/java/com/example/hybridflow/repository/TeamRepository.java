@@ -11,12 +11,10 @@ import java.util.Optional;
 @Repository
 public interface TeamRepository extends JpaRepository<Team, Long> {
 
-    // Find all teams in a specific office
     List<Team> findByOfficeId(Long officeId);
 
     List<Team> findByManagerId(Long userId);
 
-//    Optional<Team> findByTeamId(Long finalTeamId);
     Optional<Team> findByNameAndCompanyId(String name, Long companyId);
 
     List<Team> findByCompanyId(Long companyId);

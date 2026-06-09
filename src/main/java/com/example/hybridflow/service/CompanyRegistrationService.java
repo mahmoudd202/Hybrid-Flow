@@ -36,22 +36,19 @@ public class CompanyRegistrationService {
             throw new BusinessValidationException("An account with this email already exists.");
         }
 
-        // --- 1. Create and save the Company ---
         Company company = new Company();
         company.setCompanyName(request.getCompanyName());
         companyRepository.save(company);
 
-        // --- 2. Create the User (HR Role) ---
         User user = new User();
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRole(Role.HR);
-        user.setEnabled(false); // disabled until OTP verified via POST /auth/verify
+        user.setEnabled(false);
         user.setProvider(AuthProvider.LOCAL);
         user.setCompany(company);
         user = userRepository.save(user);
 
-        // --- 3. Create the User Profile ---
         UserProfile profile = new UserProfile();
         profile.setUser(user);
         profile.setFirstName(request.getFirstName());
@@ -60,7 +57,6 @@ public class CompanyRegistrationService {
         profile.setNationality(request.getNationality());
         userProfileRepository.save(profile);
 
-        // --- 4. Generate OTP and create verification record ---
         String otp = otpService.generateOtp();
 
         UserVerification verification = new UserVerification();
@@ -69,7 +65,6 @@ public class CompanyRegistrationService {
         verification.setOtpExpiry(otpService.expiryTime());
         verificationRepository.save(verification);
 
-        // --- 5. Send OTP email ---
         emailService.sendOtpEmail(user.getEmail(), otp);
     }
 }

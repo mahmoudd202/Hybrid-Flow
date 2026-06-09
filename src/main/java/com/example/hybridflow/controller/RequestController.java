@@ -19,114 +19,103 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/requests")
 public class RequestController {
-    private final RequestService requestService;
+        private final RequestService requestService;
 
-    public RequestController(RequestService requestService) {
-        this.requestService = requestService;
-    }
+        public RequestController(RequestService requestService) {
+                this.requestService = requestService;
+        }
 
-    // ──────────────────────────────────────────────────────────
-    //  EMPLOYEE / MANAGER ENDPOINTS
-    // ──────────────────────────────────────────────────────────
+        @PostMapping
+        @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
+        public ResponseEntity<RequestResponseDTO> submitRequest(
+                        @Valid @RequestBody RequestSubmissionDTO dto,
+                        @AuthenticationPrincipal CustomUserDetails userDetails) {
+                if (userDetails == null)
+                        return ResponseEntity.status(401).build();
 
-    @PostMapping
-    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
-    public ResponseEntity<RequestResponseDTO> submitRequest(
-            @Valid @RequestBody RequestSubmissionDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
+                RequestResponseDTO response = requestService.createRequest(dto, userDetails.getUser());
+                return ResponseEntity.ok(response);
+        }
 
-        RequestResponseDTO response = requestService.createRequest(dto, userDetails.getUser());
-        return ResponseEntity.ok(response);
-    }
+        @GetMapping("/my-requests")
+        @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
+        public ResponseEntity<List<RequestResponseDTO>> getMyRequests(
+                        @AuthenticationPrincipal CustomUserDetails userDetails) {
+                if (userDetails == null)
+                        return ResponseEntity.status(401).build();
 
-    @GetMapping("/my-requests")
-    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
-    public ResponseEntity<List<RequestResponseDTO>> getMyRequests(
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
+                return ResponseEntity.ok(
+                                requestService.getRequestsByUser(userDetails.getUser()));
+        }
 
-        return ResponseEntity.ok(
-                requestService.getRequestsByUser(userDetails.getUser())
-        );
-    }
+        @DeleteMapping("/{requestId}")
+        @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
+        public ResponseEntity<Void> deleteRequest(
+                        @PathVariable Long requestId,
+                        @AuthenticationPrincipal CustomUserDetails userDetails) {
+                if (userDetails == null)
+                        return ResponseEntity.status(401).build();
 
-    @DeleteMapping("/{requestId}")
-    @PreAuthorize("hasAnyRole('EMPLOYEE','MANAGER')")
-    public ResponseEntity<Void> deleteRequest(
-            @PathVariable Long requestId,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
+                requestService.deleteRequest(requestId, userDetails.getUser());
+                return ResponseEntity.noContent().build();
+        }
 
-        requestService.deleteRequest(requestId, userDetails.getUser());
-        return ResponseEntity.noContent().build();
-    }
+        @GetMapping("/pending")
+        @PreAuthorize("hasRole('HR')")
+        public ResponseEntity<List<RequestResponseDTO>> getPendingRequests(
+                        @AuthenticationPrincipal CustomUserDetails userDetails) {
+                if (userDetails == null)
+                        return ResponseEntity.status(401).build();
 
-    // ──────────────────────────────────────────────────────────
-    //  HR ENDPOINTS
-    // ──────────────────────────────────────────────────────────
+                return ResponseEntity.ok(
+                                requestService.getPendingRequestsByCompany(userDetails.getUser()));
+        }
 
-    @GetMapping("/pending")
-    @PreAuthorize("hasRole('HR')")
-    public ResponseEntity<List<RequestResponseDTO>> getPendingRequests(
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
+        @GetMapping("/history")
+        @PreAuthorize("hasRole('HR')")
+        public ResponseEntity<List<RequestResponseDTO>> getRequestHistory(
+                        @RequestParam(required = false) RequestStatus status,
+                        @RequestParam(required = false) RequestType type,
+                        @RequestParam(required = false) Long requesterId,
+                        @RequestParam(required = false) LocalDate startDate,
+                        @RequestParam(required = false) LocalDate endDate,
+                        @AuthenticationPrincipal CustomUserDetails userDetails) {
+                if (userDetails == null)
+                        return ResponseEntity.status(401).build();
 
-        return ResponseEntity.ok(
-                requestService.getPendingRequestsByCompany(userDetails.getUser())
-        );
-    }
+                List<RequestResponseDTO> history = requestService.getRequestHistory(
+                                userDetails.getUser(),
+                                status,
+                                type,
+                                requesterId,
+                                startDate,
+                                endDate);
+                return ResponseEntity.ok(history);
+        }
 
-    @GetMapping("/history")
-    @PreAuthorize("hasRole('HR')")
-    public ResponseEntity<List<RequestResponseDTO>> getRequestHistory(
-            @RequestParam(required = false) RequestStatus status,
-            @RequestParam(required = false) RequestType type,
-            @RequestParam(required = false) Long requesterId,
-            @RequestParam(required = false) LocalDate startDate,
-            @RequestParam(required = false) LocalDate endDate,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
+        @PatchMapping("/{requestId}/approve")
+        @PreAuthorize("hasRole('HR')")
+        public ResponseEntity<RequestResponseDTO> approveRequest(
+                        @PathVariable Long requestId,
+                        @AuthenticationPrincipal CustomUserDetails userDetails) {
+                if (userDetails == null)
+                        return ResponseEntity.status(401).build();
 
-        List<RequestResponseDTO> history = requestService.getRequestHistory(
-                userDetails.getUser(),
-                status,
-                type,
-                requesterId,
-                startDate,
-                endDate
-        );
-        return ResponseEntity.ok(history);
-    }
+                return ResponseEntity.ok(
+                                requestService.updateRequestStatus(requestId, RequestStatus.APPROVED,
+                                                userDetails.getUser()));
+        }
 
-    @PatchMapping("/{requestId}/approve")
-    @PreAuthorize("hasRole('HR')")
-    public ResponseEntity<RequestResponseDTO> approveRequest(
-            @PathVariable Long requestId,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
+        @PatchMapping("/{requestId}/reject")
+        @PreAuthorize("hasRole('HR')")
+        public ResponseEntity<RequestResponseDTO> rejectRequest(
+                        @PathVariable Long requestId,
+                        @AuthenticationPrincipal CustomUserDetails userDetails) {
+                if (userDetails == null)
+                        return ResponseEntity.status(401).build();
 
-        return ResponseEntity.ok(
-                requestService.updateRequestStatus(requestId, RequestStatus.APPROVED, userDetails.getUser())
-        );
-    }
-
-    @PatchMapping("/{requestId}/reject")
-    @PreAuthorize("hasRole('HR')")
-    public ResponseEntity<RequestResponseDTO> rejectRequest(
-            @PathVariable Long requestId,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        if (userDetails == null) return ResponseEntity.status(401).build();
-
-        return ResponseEntity.ok(
-                requestService.updateRequestStatus(requestId, RequestStatus.REJECTED, userDetails.getUser())
-        );
-    }
+                return ResponseEntity.ok(
+                                requestService.updateRequestStatus(requestId, RequestStatus.REJECTED,
+                                                userDetails.getUser()));
+        }
 }

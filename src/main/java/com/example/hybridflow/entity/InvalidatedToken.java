@@ -1,7 +1,9 @@
 package com.example.hybridflow.entity;
+
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.Instant;
+
 @Entity
 @Table(name = "invalidated_tokens")
 @Data

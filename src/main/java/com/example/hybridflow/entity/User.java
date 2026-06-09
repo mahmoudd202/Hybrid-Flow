@@ -13,7 +13,7 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
     private String password;
-    private boolean enabled; // email verified or not (will be saved in 0 and 1 in the database)
+    private boolean enabled;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
@@ -21,7 +21,6 @@ public class User {
     private AuthProvider provider;
     private String providerId;
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
-    // UserProfile table references user
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
     private UserProfile profile;

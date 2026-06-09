@@ -57,18 +57,6 @@ public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, 
       """)
   List<TaskAssignment> findPendingAssignmentsForUser(Long userId, List<TaskAssignmentStatus> statuses);
 
-  /**
-   * Finds active (non-terminal) assignments for a user whose task due date falls
-   * within the given date range. Used by handlePtoRequest to identify assignments
-   * that need to be flagged as PTO_UNASSIGNED.
-   *
-   * Excluded statuses (terminal / already handled):
-   * - DONE : task is complete, no action needed
-   * - CANCELLED : already cancelled by a human actor
-   * - PTO_UNASSIGNED : already flagged by a previous PTO approval — prevents
-   * double-flagging if two overlapping PTO requests are
-   * approved in sequence
-   */
   @Query("""
           select ta from TaskAssignment ta
           join fetch ta.task t
@@ -86,11 +74,6 @@ public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, 
   List<TaskAssignment> findActiveAssignmentsForUserInDateRange(Long userId, LocalDateTime startDate,
       LocalDateTime endDate);
 
-  /**
-   * Returns all BACKLOG assignments for a given team.
-   * Used by the shared team backlog dashboard endpoint.
-   * Any team member (employee or manager) may read these.
-   */
   @Query("""
           select ta from TaskAssignment ta
           join fetch ta.task t
@@ -104,11 +87,6 @@ public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, 
       """)
   List<TaskAssignment> findBacklogByTeamId(Long teamId);
 
-  /**
-   * Returns ALL assignments for a given team (all statuses).
-   * Used by the shared team dashboard — the full Jira-style board view.
-   * Any team member (employee or manager) may read these.
-   */
   @Query("""
           select ta from TaskAssignment ta
           join fetch ta.task t

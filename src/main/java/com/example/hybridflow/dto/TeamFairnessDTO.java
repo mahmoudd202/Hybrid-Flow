@@ -15,5 +15,5 @@ public class TeamFairnessDTO {
     private Long teamId;
     private String teamName;
     private double score;
-    private Map<String, String> breakdown; // Optional: details like average individual score, penalty
+    private Map<String, String> breakdown;
 }

@@ -20,7 +20,6 @@ public class TaskCreateRequestDTO {
     @NotNull(message = "targetType is required")
     private TaskTargetType targetType;
 
-    // required only for INDIVIDUAL
     private Long assigneeId;
 
     @NotNull(message = "dueDate is required")

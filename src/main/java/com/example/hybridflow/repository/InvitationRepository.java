@@ -10,13 +10,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface InvitationRepository extends JpaRepository<Invitation, Long> {
-    // Optional<Invitation> findByTokenAndUsedFalse(String token);
-
     boolean existsByEmailAndUsedFalse(String email);
 
     Optional<Invitation> findFirstByEmailAndUsedFalseAndExpiryDateAfter(String email, Instant now);
 
-    // to find all pending invitations for a company
     List<Invitation> findByCompanyIdAndUsedFalseAndExpiryDateAfter(Long companyId, Instant now);
 
     List<Invitation> findByTeamIdAndRoleAndUsedFalseAndExpiryDateAfter(Long teamId, Role role, Instant now);

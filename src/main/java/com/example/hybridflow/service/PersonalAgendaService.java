@@ -51,7 +51,8 @@ public class PersonalAgendaService {
     }
 
     @Transactional
-    public PersonalTaskResponseDTO updateMyPersonalTaskStatus(Long taskId, PersonalAgendaStatus newStatus, User currentUser) {
+    public PersonalTaskResponseDTO updateMyPersonalTaskStatus(Long taskId, PersonalAgendaStatus newStatus,
+            User currentUser) {
         validateAuthenticatedUser(currentUser);
 
         if (newStatus == null) {
@@ -78,7 +79,8 @@ public class PersonalAgendaService {
     }
 
     @Transactional
-    public PersonalTaskResponseDTO updateMyPersonalTask(Long taskId, PersonalTaskUpdateRequestDTO dto, User currentUser) {
+    public PersonalTaskResponseDTO updateMyPersonalTask(Long taskId, PersonalTaskUpdateRequestDTO dto,
+            User currentUser) {
         validateAuthenticatedUser(currentUser);
 
         PersonalAgenda task = personalAgendaRepository.findByIdAndOwnerId(taskId, currentUser.getId())

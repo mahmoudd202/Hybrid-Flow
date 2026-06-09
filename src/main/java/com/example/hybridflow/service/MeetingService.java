@@ -44,7 +44,6 @@ public class MeetingService {
     @Transactional
     public MeetingDTO createMeeting(MeetingRequestDTO dto, User host) {
 
-        // --- Validate host context ---
         if (host == null) {
             throw new AccessDeniedException("Unauthenticated");
         }
@@ -57,10 +56,8 @@ public class MeetingService {
             throw new AccessDeniedException("You are not attached to a team");
         }
 
-        // --- Validate time range ---
         validateTimeRange(dto.getStartTime(), dto.getEndTime());
 
-        // --- Validate office belongs to host's company ---
         Office office = officeRepository.findById(dto.getOfficeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Office not found"));
 
@@ -68,7 +65,6 @@ public class MeetingService {
             throw new AccessDeniedException("You can only book meetings in your company's offices");
         }
 
-        // --- Validate participating teams ---
         List<Team> teams = teamRepository.findAllById(dto.getParticipatingTeamIds());
 
         if (teams.isEmpty()) {
@@ -81,7 +77,6 @@ public class MeetingService {
             }
         }
 
-        // Host's team must be one of the participating teams
         boolean hostTeamIncluded = teams.stream()
                 .anyMatch(t -> t.getId().equals(host.getTeam().getId()));
 
@@ -89,23 +84,14 @@ public class MeetingService {
             throw new BusinessValidationException("Your own team must be one of the participating teams");
         }
 
-        // --- Collect affected users from participating teams ---
         LocalDate meetingDate = dto.getStartTime().toLocalDate();
 
         List<User> affectedUsers = collectUniqueUsersFromTeams(teams);
 
-        /*
-         * Option 2:
-         * Do not block meeting creation if users are OFF or SICK_LEAVE.
-         * Instead, collect them and return them in the response.
-         */
         List<String> excludedUsers = scheduleAvailabilityService.findUnavailableUserEmailsOnDate(affectedUsers,
                 meetingDate);
 
-        // --- Check for time overlap with existing meetings for participating teams ---
         checkForTeamSchedulingConflicts(teams, dto.getStartTime(), dto.getEndTime());
-
-        // --- Save meeting ---
         Meeting meeting = new Meeting();
         meeting.setTitle(dto.getTitle());
         meeting.setStartTime(dto.getStartTime());
@@ -142,10 +128,8 @@ public class MeetingService {
             throw new AccessDeniedException("You can only edit meetings you created");
         }
 
-        // --- Validate time range ---
         validateTimeRange(dto.getStartTime(), dto.getEndTime());
 
-        // --- Validate office ---
         Office office = officeRepository.findById(dto.getOfficeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Office not found"));
 
@@ -153,7 +137,6 @@ public class MeetingService {
             throw new AccessDeniedException("You can only book meetings in your company's offices");
         }
 
-        // --- Validate participating teams ---
         List<Team> teams = teamRepository.findAllById(dto.getParticipatingTeamIds());
 
         if (teams.isEmpty()) {
@@ -173,7 +156,6 @@ public class MeetingService {
             throw new BusinessValidationException("Your own team must be one of the participating teams");
         }
 
-        // --- Collect unavailable users without blocking update ---
         LocalDate meetingDate = dto.getStartTime().toLocalDate();
 
         List<User> affectedUsers = collectUniqueUsersFromTeams(teams);
@@ -181,14 +163,12 @@ public class MeetingService {
         List<String> excludedUsers = scheduleAvailabilityService.findUnavailableUserEmailsOnDate(affectedUsers,
                 meetingDate);
 
-        // --- Conflict check, excluding the meeting being updated ---
         checkForTeamSchedulingConflictsExcluding(
                 teams,
                 dto.getStartTime(),
                 dto.getEndTime(),
                 meetingId);
 
-        // --- Apply changes ---
         meeting.setTitle(dto.getTitle());
         meeting.setStartTime(dto.getStartTime());
         meeting.setEndTime(dto.getEndTime());
@@ -201,19 +181,11 @@ public class MeetingService {
         return toMeetingDto(saved, excludedUsers);
     }
 
-    /**
-     * Fetch meetings for a specific team.
-     * Access control is enforced by the caller.
-     */
     public List<MeetingDTO> getTeamMeetingsForUser(Long teamId, User requester) {
         enforceTeamMeetingAccess(requester, teamId);
         return getTeamMeetings(teamId);
     }
 
-    /**
-     * Fetch meetings for a specific team.
-     * Access control is enforced by the caller.
-     */
     private List<MeetingDTO> getTeamMeetings(Long teamId) {
         List<Meeting> meetings = meetingRepository.findByTeamWithDetails(teamId);
 
@@ -256,21 +228,12 @@ public class MeetingService {
 
     @Transactional
     public void handlePtoRequest(User requester, LocalDate startDate, LocalDate endDate) {
-        // Find all meetings where the requester is a participant during the PTO period
         List<Meeting> conflictingMeetings = meetingRepository.findUserMeetingsInRange(
                 requester.getId(),
                 startDate.atStartOfDay(),
                 endDate.plusDays(1).atStartOfDay());
 
         for (Meeting meeting : conflictingMeetings) {
-            /*
-             * Automatically handle PTO conflicts:
-             * 1. If the requester is the host, the meeting is marked as PTO_CANCELLED.
-             * This provides a clear audit trail instead of just deleting the record.
-             * 2. If the requester is a participant (via team), they are effectively
-             * "declined".
-             * The ScheduleViewService will show them as OFF, which is the visual indicator.
-             */
             if (meeting.getHost().getId().equals(requester.getId())) {
                 meeting.setType(MeetingType.PTO_CANCELLED);
                 meetingRepository.save(meeting);
@@ -280,34 +243,18 @@ public class MeetingService {
 
     @Transactional
     public void handleWfhRequest(User requester, LocalDate startDate, LocalDate endDate) {
-        // Find all OFFICE meetings where the requester is a participant during the WFH
-        // period
         List<Meeting> conflictingMeetings = meetingRepository.findUserOfficeMeetingsInRange(
                 requester.getId(),
                 startDate.atStartOfDay(),
                 endDate.plusDays(1).atStartOfDay());
 
         for (Meeting meeting : conflictingMeetings) {
-            /*
-             * Automatically handle WFH conflicts for OFFICE meetings:
-             * 1. If the requester is the HOST: The meeting type is automatically changed to
-             * ONLINE.
-             * This is logical because the host won't be in the office to conduct it.
-             * 2. If the requester is a PARTICIPANT: We keep the meeting as is.
-             * The ScheduleViewService will show the user as ONLINE/WFH, which informs the
-             * host
-             * that this specific participant will be joining remotely.
-             */
             if (meeting.getHost().getId().equals(requester.getId())) {
                 meeting.setType(MeetingType.ONLINE);
                 meetingRepository.save(meeting);
             }
         }
     }
-
-    // ────────────────────────────────────────────────────────────────
-    // VALIDATION HELPERS
-    // ────────────────────────────────────────────────────────────────
 
     private void validateTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
         if (startTime == null || endTime == null) {
@@ -334,10 +281,6 @@ public class MeetingService {
         return affectedUsers;
     }
 
-    /**
-     * Checks that none of the participating teams already have a meeting
-     * that overlaps with the proposed time window.
-     */
     private void checkForTeamSchedulingConflicts(
             List<Team> teams,
             LocalDateTime startTime,
@@ -391,10 +334,6 @@ public class MeetingService {
             throw new BusinessValidationException(String.join("; ", conflicts));
         }
     }
-
-    // ────────────────────────────────────────────────────────────────
-    // DTO CONVERSION
-    // ────────────────────────────────────────────────────────────────
 
     private MeetingDTO toMeetingDto(Meeting m) {
         return toMeetingDto(m, List.of());

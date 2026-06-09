@@ -16,34 +16,26 @@ import com.example.hybridflow.exception.BusinessValidationException;
 import com.example.hybridflow.exception.ResourceNotFoundException;
 import com.example.hybridflow.repository.RequestRepository;
 import com.example.hybridflow.repository.ScheduleEntryRepository;
-import com.example.hybridflow.service.MeetingService;
-import com.example.hybridflow.service.TaskService;
-import com.example.hybridflow.service.ScheduleAvailabilityService;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class RequestService {
 
     private final RequestRepository requestRepository;
     private final ScheduleEntryRepository scheduleEntryRepository;
-    private final ScheduleAvailabilityService scheduleAvailabilityService;
     private final MeetingService meetingService;
     private final TaskService taskService;
 
     public RequestService(
             RequestRepository requestRepository,
             ScheduleEntryRepository scheduleEntryRepository,
-            ScheduleAvailabilityService scheduleAvailabilityService,
             MeetingService meetingService,
-            TaskService taskService
-    ) {
+            TaskService taskService) {
         this.requestRepository = requestRepository;
         this.scheduleEntryRepository = scheduleEntryRepository;
-        this.scheduleAvailabilityService = scheduleAvailabilityService;
         this.meetingService = meetingService;
         this.taskService = taskService;
     }
@@ -55,7 +47,6 @@ public class RequestService {
 
         List<Request> existingRequests = requestRepository.findByRequesterId(currentUser.getId());
 
-        // Limit requests to 5 per month per user
         LocalDate now = LocalDate.now();
         long requestsThisMonth = existingRequests.stream()
                 .filter(r -> r.getCreatedAt() != null
@@ -67,8 +58,6 @@ public class RequestService {
             throw new BusinessValidationException("You have reached the limit of 5 requests per month.");
         }
 
-        // Validate that the user has published schedule entries for the requested dates
-        // and is not already OFF for those dates (unless it's a WFH request on an OFFICE day)
         LocalDate currentDate = dto.getStartDate();
         while (!currentDate.isAfter(dto.getEndDate())) {
             LocalDate finalCurrentDate = currentDate;
@@ -76,26 +65,21 @@ public class RequestService {
                     .ifPresentOrElse(
                             entry -> {
                                 if (dto.getType() == RequestType.WFH && entry.getWorkMode() != WorkMode.OFFICE) {
-                                    throw new BusinessValidationException("Cannot request WFH on a day you are not scheduled to be in the office: " + finalCurrentDate);
+                                    throw new BusinessValidationException(
+                                            "Cannot request WFH on a day you are not scheduled to be in the office: "
+                                                    + finalCurrentDate);
                                 } else if (dto.getType() == RequestType.PTO && entry.getWorkMode() == WorkMode.OFF) {
-                                    throw new BusinessValidationException("Cannot request PTO on a day you are already OFF: " + finalCurrentDate);
+                                    throw new BusinessValidationException(
+                                            "Cannot request PTO on a day you are already OFF: " + finalCurrentDate);
                                 }
                             },
                             () -> {
-                                throw new BusinessValidationException("Cannot create request. You have no published schedule entry on " + finalCurrentDate);
-                            }
-                    );
+                                throw new BusinessValidationException(
+                                        "Cannot create request. You have no published schedule entry on "
+                                                + finalCurrentDate);
+                            });
             currentDate = currentDate.plusDays(1);
         }
-
-        /*
-         * Prevent conflicting requests.
-         *
-         * Example:
-         * - User cannot request PTO and WFH for the same day.
-         * - User cannot create a new request overlapping an already APPROVED request.
-         * - REJECTED requests do not block new requests.
-         */
 
         for (Request existing : existingRequests) {
             if (existing.getStatus() == RequestStatus.REJECTED) {
@@ -106,15 +90,13 @@ public class RequestService {
                     dto.getStartDate(),
                     dto.getEndDate(),
                     existing.getStartDate(),
-                    existing.getEndDate()
-            );
+                    existing.getEndDate());
 
             if (overlaps) {
                 throw new BusinessValidationException(
                         "You already have a " + existing.getStatus().name().toLowerCase()
                                 + " " + existing.getType()
-                                + " request overlapping these dates"
-                );
+                                + " request overlapping these dates");
             }
         }
 
@@ -154,8 +136,7 @@ public class RequestService {
 
         if (request.getStatus() != RequestStatus.PENDING) {
             throw new BusinessValidationException(
-                    "You can only delete pending requests. Please contact HR to cancel an already processed request."
-            );
+                    "You can only delete pending requests. Please contact HR to cancel an already processed request.");
         }
 
         requestRepository.delete(request);
@@ -166,9 +147,8 @@ public class RequestService {
         validateHrContext(hrUser);
 
         return requestRepository.findByCompanyIdAndStatus(
-                        hrUser.getCompany().getId(),
-                        RequestStatus.PENDING
-                )
+                hrUser.getCompany().getId(),
+                RequestStatus.PENDING)
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -181,8 +161,7 @@ public class RequestService {
             RequestType type,
             Long requesterId,
             LocalDate startDate,
-            LocalDate endDate
-    ) {
+            LocalDate endDate) {
         validateHrContext(hrUser);
 
         return requestRepository.findCompanyRequestHistoryWithFilters(
@@ -191,10 +170,9 @@ public class RequestService {
                 type,
                 requesterId,
                 startDate,
-                endDate
-        ).stream()
-         .map(this::toResponse)
-         .toList();
+                endDate).stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional
@@ -218,15 +196,9 @@ public class RequestService {
 
         if (request.getStatus() != RequestStatus.PENDING) {
             throw new BusinessValidationException(
-                    "This request has already been " + request.getStatus().name().toLowerCase()
-            );
+                    "This request has already been " + request.getStatus().name().toLowerCase());
         }
 
-        /*
-         * Important:
-         * Apply schedule changes only when HR approves.
-         * Rejecting a request should not modify schedules.
-         */
         if (newStatus == RequestStatus.APPROVED) {
             applyApprovedRequestToSchedule(request);
         }
@@ -252,15 +224,14 @@ public class RequestService {
         LocalDate date = request.getStartDate();
 
         while (!date.isAfter(request.getEndDate())) {
-            LocalDate currentDate  = date;
+            LocalDate currentDate = date;
             ScheduleEntry entry = scheduleEntryRepository
-                    .findPublishedEntryForUserOnDate(requester.getId(), currentDate )
+                    .findPublishedEntryForUserOnDate(requester.getId(), currentDate)
                     .orElseThrow(() -> new BusinessValidationException(
                             "Cannot approve request. User "
                                     + requester.getEmail()
                                     + " has no published schedule entry on "
-                                    + currentDate 
-                    ));
+                                    + currentDate));
 
             entry.setWorkMode(targetWorkMode);
             entriesToUpdate.add(entry);
@@ -270,7 +241,6 @@ public class RequestService {
 
         scheduleEntryRepository.saveAll(entriesToUpdate);
 
-        // Handle consequences for meetings and tasks
         if (request.getType() == RequestType.PTO) {
             meetingService.handlePtoRequest(requester, request.getStartDate(), request.getEndDate());
             taskService.handlePtoRequest(requester, request.getStartDate(), request.getEndDate());
@@ -316,8 +286,7 @@ public class RequestService {
             LocalDate startA,
             LocalDate endA,
             LocalDate startB,
-            LocalDate endB
-    ) {
+            LocalDate endB) {
         return !endA.isBefore(startB) && !startA.isAfter(endB);
     }
 

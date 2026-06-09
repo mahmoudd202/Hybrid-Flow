@@ -29,14 +29,12 @@ public class PersonalAgendaController {
     @PreAuthorize("hasAnyRole('MANAGER','EMPLOYEE')")
     public ResponseEntity<PersonalTaskResponseDTO> createPersonalTask(
             @Valid @RequestBody PersonalTaskCreateRequestDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
 
-        PersonalTaskResponseDTO response =
-                personalAgendaService.createPersonalTask(dto, userDetails.getUser());
+        PersonalTaskResponseDTO response = personalAgendaService.createPersonalTask(dto, userDetails.getUser());
 
         return ResponseEntity.ok(response);
     }
@@ -44,15 +42,13 @@ public class PersonalAgendaController {
     @GetMapping("/my")
     @PreAuthorize("hasAnyRole('MANAGER','EMPLOYEE')")
     public ResponseEntity<List<PersonalTaskResponseDTO>> getMyPersonalTasks(
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
 
         return ResponseEntity.ok(
-                personalAgendaService.getMyPersonalTasks(userDetails.getUser())
-        );
+                personalAgendaService.getMyPersonalTasks(userDetails.getUser()));
     }
 
     @PatchMapping("/{id}/status")
@@ -60,14 +56,13 @@ public class PersonalAgendaController {
     public ResponseEntity<PersonalTaskResponseDTO> updateMyPersonalTaskStatus(
             @PathVariable Long id,
             @Valid @RequestBody PersonalTaskStatusUpdateDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
 
-        PersonalTaskResponseDTO response =
-                personalAgendaService.updateMyPersonalTaskStatus(id, dto.getStatus(), userDetails.getUser());
+        PersonalTaskResponseDTO response = personalAgendaService.updateMyPersonalTaskStatus(id, dto.getStatus(),
+                userDetails.getUser());
 
         return ResponseEntity.ok(response);
     }
@@ -76,8 +71,7 @@ public class PersonalAgendaController {
     @PreAuthorize("hasAnyRole('MANAGER','EMPLOYEE')")
     public ResponseEntity<Void> deleteMyPersonalTask(
             @PathVariable Long id,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
@@ -91,14 +85,12 @@ public class PersonalAgendaController {
     public ResponseEntity<PersonalTaskResponseDTO> updateMyPersonalTask(
             @PathVariable Long id,
             @Valid @RequestBody PersonalTaskUpdateRequestDTO dto,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
 
-        PersonalTaskResponseDTO response =
-                personalAgendaService.updateMyPersonalTask(id, dto, userDetails.getUser());
+        PersonalTaskResponseDTO response = personalAgendaService.updateMyPersonalTask(id, dto, userDetails.getUser());
 
         return ResponseEntity.ok(response);
     }

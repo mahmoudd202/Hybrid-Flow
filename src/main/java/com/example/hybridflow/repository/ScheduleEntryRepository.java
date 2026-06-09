@@ -76,7 +76,6 @@ public interface ScheduleEntryRepository extends JpaRepository<ScheduleEntry, Lo
       """)
   List<ScheduleEntry> findPublishedEntriesForTeamOnDate(Long teamId, LocalDate date);
 
-  // HR view: all published entries across all teams in a company
   @Query("""
           select se from ScheduleEntry se
           join fetch se.schedule s
@@ -90,7 +89,6 @@ public interface ScheduleEntryRepository extends JpaRepository<ScheduleEntry, Lo
       """)
   List<ScheduleEntry> findPublishedEntriesForCompany(Long companyId, LocalDate from, LocalDate to);
 
-  // HR office view: all published entries for teams assigned to a specific office
   @Query("""
           select se from ScheduleEntry se
           join fetch se.schedule s

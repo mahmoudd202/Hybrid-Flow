@@ -21,19 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Synchronous phase of schedule generation.
- *
- * Responsibilities (all done on the HTTP request thread, completes in ~50ms):
- *   1. Validate the incoming request and HR user context
- *   2. Validate team availability (no draft or published conflicts)
- *   3. Create a ScheduleOptimizationRun row with status = PENDING
- *   4. Fire-and-forget the async Gurobi solve via ScheduleGenerationAsyncService
- *   5. Return HTTP 202 Accepted with the runId so the frontend can poll
- *
- * The actual Gurobi solve and all persistence happen in the background threads
- * managed by the "gurobiExecutor" ThreadPoolTaskExecutor.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -47,18 +34,11 @@ public class ScheduleGenerationService {
     private final ScheduleOptimizationRunRepository runRepository;
     private final ScheduleGenerationAsyncService asyncService;
 
-    /**
-     * Validates the request and immediately returns a run ID.
-     * The actual Gurobi solve runs asynchronously on a background thread.
-     *
-     * @return HTTP 202 payload with runId and status = "PENDING"
-     */
     @Transactional
     public ScheduleGenerationAcceptedDTO generateSchedule(
             ScheduleGenerationRequestDTO request,
             User currentUser) {
 
-        // ── Validate request and user ─────────────────────────────────────────
         validateGenerationRequest(request, currentUser);
 
         Long companyId = currentUser.getCompany().getId();
@@ -89,7 +69,6 @@ public class ScheduleGenerationService {
         List<User> users = userRepository.findSchedulableUsersByTeamIds(selectedTeamIds);
         validateEveryTeamHasSchedulableUsers(teams, users);
 
-        // ── Create PENDING run row ────────────────────────────────────────────
         ScheduleOptimizationRun run = new ScheduleOptimizationRun();
         run.setJobStatus(OptimizationJobStatus.PENDING);
         run.setCompany(currentUser.getCompany());
@@ -105,9 +84,6 @@ public class ScheduleGenerationService {
                 savedRun.getId(), teams.size(), users.size(),
                 request.getStartDate(), request.getEndDate());
 
-        // ── Fire and forget ───────────────────────────────────────────────────
-        // Pass primitive IDs and invoke only AFTER the current transaction commits.
-        // This ensures the background thread can load the PENDING run row from the database.
         TransactionSynchronizationManager.registerSynchronization(
                 new TransactionSynchronization() {
                     @Override
@@ -117,13 +93,10 @@ public class ScheduleGenerationService {
                                 request,
                                 office.getId(),
                                 selectedTeamIds,
-                                policy.getId()
-                        );
+                                policy.getId());
                     }
-                }
-        );
+                });
 
-        // ── Return 202 immediately ────────────────────────────────────────────
         return ScheduleGenerationAcceptedDTO.builder()
                 .runId(savedRun.getId())
                 .status("PENDING")
@@ -133,8 +106,6 @@ public class ScheduleGenerationService {
                 .planningPolicyName(policy.getName())
                 .build();
     }
-
-    // ── Validation helpers (unchanged from original) ──────────────────────────
 
     private void validateGenerationRequest(ScheduleGenerationRequestDTO request, User currentUser) {
         if (currentUser == null || currentUser.getId() == null) {
@@ -177,15 +148,15 @@ public class ScheduleGenerationService {
         List<String> conflicts = new ArrayList<>();
 
         for (Team team : teams) {
-            List<Schedule> publishedConflicts =
-                    scheduleRepository.findPublishedForTeamInRange(team.getId(), startDate, endDate);
+            List<Schedule> publishedConflicts = scheduleRepository.findPublishedForTeamInRange(team.getId(), startDate,
+                    endDate);
             if (!publishedConflicts.isEmpty()) {
                 conflicts.add("Team '" + team.getName()
                         + "' already has a published schedule in this date range.");
             }
 
-            List<Schedule> draftConflicts =
-                    scheduleRepository.findUnpublishedForTeamInRange(team.getId(), startDate, endDate);
+            List<Schedule> draftConflicts = scheduleRepository.findUnpublishedForTeamInRange(team.getId(), startDate,
+                    endDate);
             if (!draftConflicts.isEmpty()) {
                 conflicts.add("Team '" + team.getName()
                         + "' already has an unpublished generated schedule in this date range. "

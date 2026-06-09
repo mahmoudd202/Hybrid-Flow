@@ -20,40 +20,32 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Slice 0 — Startup & Seed Verification
- *
- * Verifies that the application context loads cleanly and every required
- * seed record is present after the CommandLineRunner runs.
- */
 @SpringBootTest
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class SeedDataIntegrationTest {
 
-    @Autowired UserRepository userRepository;
-    @Autowired TeamRepository teamRepository;
-    @Autowired ScheduleRepository scheduleRepository;
-    @Autowired PlanningPolicyRepository planningPolicyRepository;
-    @Autowired TaskRepository taskRepository;
-    @Autowired TaskAssignmentRepository taskAssignmentRepository;
-    @Autowired MeetingRepository meetingRepository;
-    @Autowired RequestRepository requestRepository;
-
-    // -----------------------------------------------------------------------
-    // Context load
-    // -----------------------------------------------------------------------
+    @Autowired
+    UserRepository userRepository;
+    @Autowired
+    TeamRepository teamRepository;
+    @Autowired
+    ScheduleRepository scheduleRepository;
+    @Autowired
+    PlanningPolicyRepository planningPolicyRepository;
+    @Autowired
+    TaskRepository taskRepository;
+    @Autowired
+    TaskAssignmentRepository taskAssignmentRepository;
+    @Autowired
+    MeetingRepository meetingRepository;
+    @Autowired
+    RequestRepository requestRepository;
 
     @Test
     void contextLoads() {
-        // Passes if the Spring context starts without errors.
-        // Hibernate schema creation and the CommandLineRunner must both complete
-        // without throwing an exception.
-    }
 
-    // -----------------------------------------------------------------------
-    // Users
-    // -----------------------------------------------------------------------
+    }
 
     @Test
     void sevenUsersSeeded() {
@@ -72,10 +64,6 @@ class SeedDataIntegrationTest {
                 .isEqualTo(7);
     }
 
-    // -----------------------------------------------------------------------
-    // Teams
-    // -----------------------------------------------------------------------
-
     @Test
     void twoTeamsSeeded() {
         assertThat(teamRepository.count())
@@ -92,10 +80,6 @@ class SeedDataIntegrationTest {
         assertThat(names).containsExactly("Backend Devs", "UI/UX Design");
     }
 
-    // -----------------------------------------------------------------------
-    // Schedules
-    // -----------------------------------------------------------------------
-
     @Test
     void twoPublishedSchedulesSeeded() {
         long publishedCount = scheduleRepository.findAll().stream()
@@ -111,17 +95,12 @@ class SeedDataIntegrationTest {
         LocalDate today = LocalDate.now();
         boolean todayIsCovered = scheduleRepository.findAll().stream()
                 .filter(s -> s.isPublished())
-                .anyMatch(s ->
-                        !s.getStartDate().isAfter(today) &&
+                .anyMatch(s -> !s.getStartDate().isAfter(today) &&
                         !s.getEndDate().isBefore(today));
         assertThat(todayIsCovered)
                 .as("At least one published schedule must cover today's date")
                 .isTrue();
     }
-
-    // -----------------------------------------------------------------------
-    // Planning Policy
-    // -----------------------------------------------------------------------
 
     @Test
     void onePlanningPolicySeeded() {
@@ -135,10 +114,6 @@ class SeedDataIntegrationTest {
         String name = planningPolicyRepository.findAll().get(0).getName();
         assertThat(name).isEqualTo("Standard Hybrid Policy");
     }
-
-    // -----------------------------------------------------------------------
-    // Task & TaskAssignment
-    // -----------------------------------------------------------------------
 
     @Test
     void oneTaskSeeded() {
@@ -160,10 +135,6 @@ class SeedDataIntegrationTest {
         assertThat(status.name()).isEqualTo("TODO");
     }
 
-    // -----------------------------------------------------------------------
-    // Meeting
-    // -----------------------------------------------------------------------
-
     @Test
     void oneMeetingSeeded() {
         assertThat(meetingRepository.count())
@@ -176,10 +147,6 @@ class SeedDataIntegrationTest {
         String title = meetingRepository.findAll().get(0).getTitle();
         assertThat(title).isEqualTo("Sprint Planning");
     }
-
-    // -----------------------------------------------------------------------
-    // Request
-    // -----------------------------------------------------------------------
 
     @Test
     void oneRequestSeeded() {

@@ -47,8 +47,6 @@ public class InvitationService {
             throw new BusinessValidationException("An active invitation has already been sent to this email.");
         }
 
-        // Strict Manager Check: A team can only have one manager.
-        // If a new manager is invited to a team that already has one, demote the old manager to an employee.
         if (role == Role.MANAGER && team != null) {
             if (team.getManager() != null) {
                 User oldManager = team.getManager();
@@ -59,7 +57,6 @@ public class InvitationService {
                 teamRepository.save(team);
             }
 
-            // Also demote any pending manager invitations for this team to EMPLOYEE
             List<Invitation> pendingManagerInvites = invitationRepository
                     .findByTeamIdAndRoleAndUsedFalseAndExpiryDateAfter(team.getId(), Role.MANAGER, Instant.now());
             for (Invitation pendingInvite : pendingManagerInvites) {
@@ -119,7 +116,7 @@ public class InvitationService {
             throw new BusinessValidationException("Invitation has already been used.");
         }
 
-        invitation.setExpiryDate(Instant.now().plusSeconds(86400)); // 24 hours
+        invitation.setExpiryDate(Instant.now().plusSeconds(86400));
         Invitation saved = invitationRepository.save(invitation);
 
         emailService.sendInvitationEmail(saved.getEmail(), saved.getRole().name());
@@ -160,7 +157,7 @@ public class InvitationService {
             throw new BusinessValidationException("You cannot manage an invitation belonging to another company.");
         }
 
-        invitation.setExpiryDate(Instant.now().minusSeconds(1)); // Expire immediately
+        invitation.setExpiryDate(Instant.now().minusSeconds(1));
         Invitation saved = invitationRepository.save(invitation);
 
         InvitationResponseDTO dto = toResponseDTO(saved);

@@ -1,6 +1,8 @@
 package com.example.hybridflow.entity;
+
 import jakarta.persistence.*;
 import lombok.Data;
+
 @Entity
 @Table(name = "companies")
 @Data

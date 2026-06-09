@@ -40,10 +40,8 @@ public class PreferredWorkDayService {
             throw new BusinessValidationException("You can select a maximum of 2 preferred online days");
         }
 
-        // Remove existing preferences to overwrite
         preferredWorkDayRepository.deleteByUserId(user.getId());
 
-        // Save new preferences
         List<PreferredWorkDay> preferences = dto.getPreferredDays().stream()
                 .map(day -> PreferredWorkDay.builder()
                         .user(user)
@@ -93,13 +91,10 @@ public class PreferredWorkDayService {
                     null);
         }
 
-        // Each entry: [0] = String[] csvLine, stored as-is; line numbers tracked
-        // separately
         List<String[]> csvRows = new ArrayList<>();
-        List<Integer> csvLineNumbers = new ArrayList<>(); // actual 1-based line number in the file
+        List<Integer> csvLineNumbers = new ArrayList<>();
         Set<String> emailsToFetch = new HashSet<>();
 
-        // 1. Read all rows from the CSV file
         try (Reader reader = new InputStreamReader(file.getInputStream());
                 CSVReader csvReader = new CSVReaderBuilder(reader).build()) {
 
@@ -116,7 +111,7 @@ public class PreferredWorkDayService {
                     continue;
 
                 csvRows.add(line);
-                csvLineNumbers.add(lineNumber); // preserve real file line number
+                csvLineNumbers.add(lineNumber);
                 if (line.length > 0) {
                     emailsToFetch.add(line[0].trim());
                 }
@@ -125,8 +120,6 @@ public class PreferredWorkDayService {
             return new PreferenceCsvUploadResponse(false, "Parsing failed: " + e.getMessage(), 0, 0, 0, 0, null);
         }
 
-        // 2. Batch fetch users and their companies in exactly one database query (O(1)
-        // complexity)
         Map<String, User> userMap = userRepository.findByEmailInWithCompany(emailsToFetch).stream()
                 .collect(Collectors.toMap(User::getEmail, u -> u));
 
@@ -135,11 +128,10 @@ public class PreferredWorkDayService {
         Set<Long> userIdsToClear = new HashSet<>();
         int validCount = 0, invalidCount = 0, savedCount = 0;
 
-        // 3. Process each row in memory against the pre-fetched user map
         for (int i = 0; i < csvRows.size(); i++) {
             String[] line = csvRows.get(i);
             PreferenceCsvRowDto rowDto = new PreferenceCsvRowDto();
-            rowDto.setRowNumber(csvLineNumbers.get(i)); // real CSV file line number
+            rowDto.setRowNumber(csvLineNumbers.get(i));
             rows.add(rowDto);
 
             if (line.length < 2) {
@@ -152,11 +144,6 @@ public class PreferredWorkDayService {
             String email = line[0].trim();
             rowDto.setEmail(email);
 
-            // Collect day values from ALL columns starting at index 1.
-            // This handles both CSV formats:
-            // Unquoted: dev1@techflow.com,MONDAY,TUESDAY → line[1]="MONDAY",
-            // line[2]="TUESDAY"
-            // Quoted: dev1@techflow.com,"MONDAY,TUESDAY" → line[1]="MONDAY,TUESDAY"
             List<String> dayList = new ArrayList<>();
             for (int col = 1; col < line.length; col++) {
                 Arrays.stream(line[col].split(","))
@@ -166,7 +153,6 @@ public class PreferredWorkDayService {
             }
             rowDto.setPreferredDays(dayList);
 
-            // Reject duplicates explicitly rather than silently deduplicating
             long distinctCount = dayList.stream().distinct().count();
             if (distinctCount != dayList.size()) {
                 rowDto.setValid(false);
@@ -201,7 +187,6 @@ public class PreferredWorkDayService {
                         .map(d -> DayOfWeek.valueOf(d.toUpperCase()))
                         .collect(Collectors.toList());
 
-                // Register user ID for bulk deletion and prepare entities for bulk save
                 userIdsToClear.add(user.getId());
                 for (DayOfWeek day : days) {
                     preferencesToSave.add(PreferredWorkDay.builder()
@@ -225,7 +210,6 @@ public class PreferredWorkDayService {
             }
         }
 
-        // 4. Perform single transaction batch database modifications (delete and save)
         if (!userIdsToClear.isEmpty()) {
             try {
                 preferredWorkDayRepository.deleteByUserIdIn(userIdsToClear);
@@ -233,7 +217,7 @@ public class PreferredWorkDayService {
                     preferredWorkDayRepository.saveAll(preferencesToSave);
                 }
             } catch (Exception e) {
-                savedCount = 0; // reset: nothing was actually persisted
+                savedCount = 0;
                 for (PreferenceCsvRowDto rowDto : rows) {
                     if (rowDto.isValid()) {
                         rowDto.setSaved(false);

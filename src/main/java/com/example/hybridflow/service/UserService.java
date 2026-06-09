@@ -42,7 +42,7 @@ public class UserService {
             throw new BusinessValidationException("You do not have access to this employee.");
         }
         UserProfile userProfile = userProfileRepository.findByUserId(employeeId)
-                .orElse(null); // Profile might not exist for all users
+                .orElse(null);
 
         return toEmployeeDetailsResponseDTO(employee, userProfile);
     }
@@ -81,7 +81,6 @@ public class UserService {
             employeeToUpdate.getTeam().setManager(employeeToUpdate);
             teamRepository.save(employeeToUpdate.getTeam());
         } else if (employeeToUpdate.getRole() == Role.MANAGER && newRole != Role.MANAGER) {
-            // If current role is MANAGER and new role is not, unassign from team
             if (employeeToUpdate.getTeam() != null && employeeToUpdate.getTeam().getManager() != null &&
                     employeeToUpdate.getTeam().getManager().getId().equals(employeeToUpdate.getId())) {
                 employeeToUpdate.getTeam().setManager(null);
@@ -102,7 +101,6 @@ public class UserService {
             throw new BusinessValidationException("You are not assigned to a company.");
         }
 
-        // Authorization: Only HR can move employees between teams
         if (currentUser.getRole() != Role.HR) {
             throw new AccessDeniedException("Only HR users can move employees between teams.");
         }
@@ -128,16 +126,12 @@ public class UserService {
             throw new BusinessValidationException("You cannot move an employee to a team in another company.");
         }
 
-        // Business Logic: Handle if the employee being moved is a manager
         if (employeeToMove.getRole() == Role.MANAGER && employeeToMove.getTeam() != null &&
                 employeeToMove.getTeam().getManager() != null &&
                 employeeToMove.getTeam().getManager().getId().equals(employeeToMove.getId())) {
-            // Unassign from old team's manager role
             employeeToMove.getTeam().setManager(null);
             teamRepository.save(employeeToMove.getTeam());
 
-            // Demote to regular employee. They can be promoted again in the new team if
-            // needed.
             employeeToMove.setRole(Role.EMPLOYEE);
         }
 
@@ -200,7 +194,7 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         UserProfile profile = userProfileRepository.findByUserId(user.getId()).orElse(null);
-        
+
         return CurrentUserResponseDTO.builder()
                 .id(user.getId())
                 .email(user.getEmail())

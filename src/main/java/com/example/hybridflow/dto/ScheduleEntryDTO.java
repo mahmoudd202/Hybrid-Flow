@@ -14,7 +14,7 @@ import com.example.hybridflow.entity.WorkMode;
 public class ScheduleEntryDTO {
     private Long entryId;
     private LocalDate date;
-    private WorkMode workMode; // OFFICE, ONLINE, OFF
+    private WorkMode workMode;
     private String officeName;
 
     public ScheduleEntryDTO(Long entryId, LocalDate date, WorkMode workMode) {

@@ -7,10 +7,6 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 import java.util.List;
 
-/**
- * The complete schedule payload for one team.
- * Contains: schedule metadata + user rows + meetings in range.
- */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

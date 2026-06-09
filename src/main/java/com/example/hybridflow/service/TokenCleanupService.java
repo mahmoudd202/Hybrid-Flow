@@ -9,14 +9,12 @@ import com.example.hybridflow.repository.InvalidatedTokenRepository;
 
 import java.time.Instant;
 
-
 @Service
 @RequiredArgsConstructor
 public class TokenCleanupService {
 
     private final InvalidatedTokenRepository invalidatedTokenRepository;
 
-    // Runs every hour (3600000 ms).
     @Scheduled(fixedRate = 3_600_000)
     @Transactional
     public void purgeExpiredTokens() {
