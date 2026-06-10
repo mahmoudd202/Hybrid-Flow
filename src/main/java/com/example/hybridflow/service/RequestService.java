@@ -17,6 +17,7 @@ import com.example.hybridflow.exception.ResourceNotFoundException;
 import com.example.hybridflow.repository.RequestRepository;
 import com.example.hybridflow.repository.ScheduleEntryRepository;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,10 @@ public class RequestService {
 
         LocalDate currentDate = dto.getStartDate();
         while (!currentDate.isAfter(dto.getEndDate())) {
+            if (currentDate.getDayOfWeek() == DayOfWeek.SATURDAY || currentDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
+                currentDate = currentDate.plusDays(1);
+                continue;
+            }
             LocalDate finalCurrentDate = currentDate;
             scheduleEntryRepository.findPublishedEntryForUserOnDate(currentUser.getId(), finalCurrentDate)
                     .ifPresentOrElse(
@@ -224,6 +229,10 @@ public class RequestService {
         LocalDate date = request.getStartDate();
 
         while (!date.isAfter(request.getEndDate())) {
+            if (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+                date = date.plusDays(1);
+                continue;
+            }
             LocalDate currentDate = date;
             ScheduleEntry entry = scheduleEntryRepository
                     .findPublishedEntryForUserOnDate(requester.getId(), currentDate)

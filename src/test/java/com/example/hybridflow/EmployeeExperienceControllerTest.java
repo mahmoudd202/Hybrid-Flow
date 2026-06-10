@@ -385,6 +385,70 @@ class EmployeeExperienceControllerTest {
         }
 
         @Test
+        void createAndApprovePtoRequestAcrossWeekendSucceeds() throws Exception {
+                LocalDate nextMonday = LocalDate.now().with(java.time.DayOfWeek.MONDAY).plusWeeks(1);
+                LocalDate friday = nextMonday.plusDays(4); // Friday of next week
+                LocalDate saturday = nextMonday.plusDays(5);
+                LocalDate sunday = nextMonday.plusDays(6);
+                LocalDate monday = nextMonday.plusDays(7); // Monday of week after next
+
+                // Submit request (covers Friday, Saturday, Sunday, Monday)
+                String requestBody = objectMapper.writeValueAsString(Map.of(
+                                "type", "PTO",
+                                "startDate", friday.toString(),
+                                "endDate", monday.toString(),
+                                "reason", "Vacation across weekend"));
+
+                MvcResult createResult = mockMvc.perform(post("/api/requests")
+                                .header("Authorization", "Bearer " + employeeToken)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.status").value("PENDING"))
+                                .andExpect(jsonPath("$.type").value("PTO"))
+                                .andReturn();
+
+                Long newRequestId = objectMapper.readTree(
+                                createResult.getResponse().getContentAsString()).get("id").asLong();
+
+                // Now login as HR
+                String loginBody = objectMapper.writeValueAsString(
+                                Map.of("email", "hr@techflow.com", "password", "password123"));
+
+                MvcResult loginResult = mockMvc.perform(post("/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(loginBody))
+                                .andExpect(status().isOk())
+                                .andReturn();
+
+                String hrToken = objectMapper.readTree(loginResult.getResponse().getContentAsString())
+                                .get("accessToken").asText();
+
+                // Approve the request
+                mockMvc.perform(patch("/api/requests/" + newRequestId + "/approve")
+                                .header("Authorization", "Bearer " + hrToken))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.status").value("APPROVED"));
+
+                // Verify schedule entry updates in the repository
+                // Friday schedule entry should have WorkMode.OFF (due to PTO)
+                com.example.hybridflow.entity.ScheduleEntry fridayEntry = scheduleEntryRepository
+                                .findPublishedEntryForUserOnDate(dev1Id, friday)
+                                .orElseThrow(() -> new AssertionError("Friday entry should exist"));
+                assertThat(fridayEntry.getWorkMode()).isEqualTo(WorkMode.OFF);
+
+                // Monday schedule entry should have WorkMode.OFF (due to PTO)
+                com.example.hybridflow.entity.ScheduleEntry mondayEntry = scheduleEntryRepository
+                                .findPublishedEntryForUserOnDate(dev1Id, monday)
+                                .orElseThrow(() -> new AssertionError("Monday entry should exist"));
+                assertThat(mondayEntry.getWorkMode()).isEqualTo(WorkMode.OFF);
+
+                // Saturday and Sunday entries should NOT exist
+                assertThat(scheduleEntryRepository.findPublishedEntryForUserOnDate(dev1Id, saturday)).isEmpty();
+                assertThat(scheduleEntryRepository.findPublishedEntryForUserOnDate(dev1Id, sunday)).isEmpty();
+        }
+
+        @Test
         void setAndGetPreferences() throws Exception {
                 String body = objectMapper.writeValueAsString(
                                 Map.of("preferredDays", List.of("MONDAY", "WEDNESDAY")));
