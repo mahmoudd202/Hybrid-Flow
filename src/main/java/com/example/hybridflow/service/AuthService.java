@@ -270,4 +270,30 @@ public class AuthService {
                 .message("Password has been reset successfully.")
                 .build();
     }
+
+    @Transactional
+    public AuthActionResponse resendOtp(ResendOtpRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+
+        if (user.isEnabled()) {
+            throw new BusinessValidationException("Account is already verified. Please log in.");
+        }
+
+        String otp = otpService.generateOtp();
+        UserVerification verification = verificationRepository.findByUserId(user.getId())
+                .orElse(new UserVerification());
+        verification.setUser(user);
+        verification.setOtpHash(passwordEncoder.encode(otp));
+        verification.setOtpExpiry(otpService.expiryTime());
+        verificationRepository.save(verification);
+
+        emailService.sendOtpEmail(user.getEmail(), otp);
+
+        return AuthActionResponse.builder()
+                .message("A new OTP has been sent to your email for verification.")
+                .status("PENDING_VERIFICATION")
+                .email(user.getEmail())
+                .build();
+    }
 }

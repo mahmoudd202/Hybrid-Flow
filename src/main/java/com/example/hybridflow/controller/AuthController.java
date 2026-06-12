@@ -82,4 +82,9 @@ public class AuthController {
     public ResponseEntity<AuthActionResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         return ResponseEntity.ok(authService.resetPassword(request));
     }
+
+    @PostMapping("/resend-otp")
+    public ResponseEntity<AuthActionResponse> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        return ResponseEntity.ok(authService.resendOtp(request));
+    }
 }
