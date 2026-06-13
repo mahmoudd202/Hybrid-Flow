@@ -111,11 +111,22 @@ public class MeetingService {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Meeting not found"));
 
-        if (!meeting.getHost().getId().equals(requester.getId())) {
-            throw new AccessDeniedException("You can only delete meetings you created");
+        if (meeting.getHost().getId().equals(requester.getId())) {
+            meetingRepository.delete(meeting);
+        } else {
+            if (requester.getTeam() == null) {
+                throw new AccessDeniedException("You are not attached to a team");
+            }
+            List<Team> teams = new ArrayList<>(meeting.getParticipatingTeams());
+            boolean isInvited = teams.stream()
+                    .anyMatch(t -> t.getId().equals(requester.getTeam().getId()));
+            if (!isInvited) {
+                throw new AccessDeniedException("You can only decline meetings that your team is invited to");
+            }
+            teams.removeIf(t -> t.getId().equals(requester.getTeam().getId()));
+            meeting.setParticipatingTeams(teams);
+            meetingRepository.save(meeting);
         }
-
-        meetingRepository.delete(meeting);
     }
 
     @Transactional
