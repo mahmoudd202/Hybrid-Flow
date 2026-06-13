@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.hybridflow.dto.InvitationResponseDTO;
+import com.example.hybridflow.entity.AuthProvider;
 import com.example.hybridflow.entity.Company;
 import com.example.hybridflow.entity.Invitation;
 import com.example.hybridflow.entity.Role;
@@ -17,6 +18,7 @@ import com.example.hybridflow.repository.TeamRepository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,8 +41,12 @@ public class InvitationService {
     }
 
     public Invitation createAndSendInvitation(String email, Role role, Team team, Company company) {
-        if (userRepository.existsByEmail(email)) {
-            throw new BusinessValidationException("A user with this email is already registered.");
+        Optional<User> existingUserOpt = userRepository.findByEmail(email);
+        if (existingUserOpt.isPresent()) {
+            User existingUser = existingUserOpt.get();
+            if (existingUser.isEnabled() || existingUser.getPassword() != null) {
+                throw new BusinessValidationException("A user with this email is already registered.");
+            }
         }
 
         if (invitationRepository.existsByEmailAndUsedFalse(email)) {
@@ -62,6 +68,13 @@ public class InvitationService {
             for (Invitation pendingInvite : pendingManagerInvites) {
                 pendingInvite.setRole(Role.EMPLOYEE);
                 invitationRepository.save(pendingInvite);
+
+                userRepository.findByEmail(pendingInvite.getEmail()).ifPresent(u -> {
+                    if (!u.isEnabled() && u.getPassword() == null) {
+                        u.setRole(Role.EMPLOYEE);
+                        userRepository.save(u);
+                    }
+                });
             }
         }
 
@@ -73,6 +86,24 @@ public class InvitationService {
         invitation.setExpiryDate(Instant.now().plusSeconds(86400)); // 24 hours
 
         Invitation saved = invitationRepository.save(invitation);
+
+        if (existingUserOpt.isPresent()) {
+            User existingUser = existingUserOpt.get();
+            existingUser.setRole(role);
+            existingUser.setTeam(team);
+            existingUser.setCompany(company);
+            userRepository.save(existingUser);
+        } else {
+            User newUser = new User();
+            newUser.setEmail(email);
+            newUser.setRole(role);
+            newUser.setTeam(team);
+            newUser.setCompany(company);
+            newUser.setEnabled(false);
+            newUser.setProvider(AuthProvider.LOCAL);
+            userRepository.save(newUser);
+        }
+
         emailService.sendInvitationEmail(email, role.name());
         return saved;
     }
@@ -139,6 +170,12 @@ public class InvitationService {
         if (!invitation.getCompany().getId().equals(company.getId())) {
             throw new BusinessValidationException("You cannot manage an invitation belonging to another company.");
         }
+
+        userRepository.findByEmail(invitation.getEmail()).ifPresent(user -> {
+            if (!user.isEnabled() && user.getPassword() == null) {
+                userRepository.delete(user);
+            }
+        });
 
         invitationRepository.delete(invitation);
     }

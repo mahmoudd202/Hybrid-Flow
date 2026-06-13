@@ -141,6 +141,21 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
                 profileRepository.save(profile);
             }
 
+            Optional<Invitation> activeInvitation = invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(
+                    finalEmail, Instant.now());
+
+            if (activeInvitation.isPresent()) {
+                Invitation inv = activeInvitation.get();
+                inv.setUsed(true);
+                invitationRepository.save(inv);
+            }
+
+            if (user.getRole() == Role.MANAGER && user.getTeam() != null) {
+                Team team = user.getTeam();
+                team.setManager(user);
+                teamRepository.save(team);
+            }
+
             String jwt = jwtService.generateToken(user);
             response.sendRedirect(frontendBaseUrl + "/oauth/callback?token=" + jwt);
             return;

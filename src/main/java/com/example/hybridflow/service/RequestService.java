@@ -289,6 +289,13 @@ public class RequestService {
         if (dto.getEndDate().isBefore(dto.getStartDate())) {
             throw new BusinessValidationException("endDate must be on or after startDate");
         }
+
+        if (dto.getStartDate().equals(dto.getEndDate())) {
+            DayOfWeek day = dto.getStartDate().getDayOfWeek();
+            if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+                throw new BusinessValidationException("Cannot request " + dto.getType() + " on weekends.");
+            }
+        }
     }
 
     private boolean datesOverlap(

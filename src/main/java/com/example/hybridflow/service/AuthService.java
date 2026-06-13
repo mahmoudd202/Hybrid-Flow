@@ -146,6 +146,12 @@ public class AuthService {
         if (existingUserOpt.isPresent()) {
             user = existingUserOpt.get();
             user.setPassword(passwordEncoder.encode(request.getPassword()));
+            invitation = invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(email, now).orElse(null);
+            if (invitation != null) {
+                user.setRole(invitation.getRole());
+                user.setTeam(invitation.getTeam());
+                user.setCompany(invitation.getCompany());
+            }
             user = userRepository.save(user);
         } else {
             invitation = invitationRepository.findFirstByEmailAndUsedFalseAndExpiryDateAfter(email, now)
