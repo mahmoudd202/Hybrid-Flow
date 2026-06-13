@@ -77,11 +77,19 @@ public class ScheduleGenerationAsyncService {
             model = new GRBModel(env);
             model.set(GRB.StringAttr.ModelName, "HybridFlowSchedule");
 
-            Map<String, GRBVar> x = new HashMap<>();
+            Map<String, GRBVar> xOffice = new HashMap<>();
+            Map<String, GRBVar> xOnline = new HashMap<>();
             for (User user : users) {
                 for (LocalDate date : workDates) {
                     String key = variableKey(user.getId(), date);
-                    x.put(key, model.addVar(0.0, 1.0, 0.0, GRB.BINARY, "x_" + key));
+                    xOffice.put(key, model.addVar(0.0, 1.0, 0.0, GRB.BINARY, "x_office_" + key));
+                    xOnline.put(key, model.addVar(0.0, 1.0, 0.0, GRB.BINARY, "x_online_" + key));
+
+                    // At most one mode can be active on any date
+                    GRBLinExpr modeSum = new GRBLinExpr();
+                    modeSum.addTerm(1.0, xOffice.get(key));
+                    modeSum.addTerm(1.0, xOnline.get(key));
+                    model.addConstr(modeSum, GRB.LESS_EQUAL, 1.0, "ModeConstraint_" + key);
                 }
             }
 
@@ -98,7 +106,7 @@ public class ScheduleGenerationAsyncService {
 
                 GRBLinExpr capacityExpr = new GRBLinExpr();
                 for (User user : users) {
-                    capacityExpr.addTerm(1.0, x.get(variableKey(user.getId(), date)));
+                    capacityExpr.addTerm(1.0, xOffice.get(variableKey(user.getId(), date)));
                 }
                 model.addConstr(capacityExpr, GRB.LESS_EQUAL, remainingCapacity,
                         "Capacity_" + date);
@@ -116,7 +124,7 @@ public class ScheduleGenerationAsyncService {
 
                     GRBLinExpr weeklyOfficeDaysExpr = new GRBLinExpr();
                     for (LocalDate date : weekDates) {
-                        weeklyOfficeDaysExpr.addTerm(1.0, x.get(variableKey(user.getId(), date)));
+                        weeklyOfficeDaysExpr.addTerm(1.0, xOffice.get(variableKey(user.getId(), date)));
                     }
 
                     String suffix = "User_" + user.getId() + "_" + weekKey;
@@ -124,6 +132,15 @@ public class ScheduleGenerationAsyncService {
                             policy.getMinOfficeDaysPerWeek(), "MinOffice_" + suffix);
                     model.addConstr(weeklyOfficeDaysExpr, GRB.LESS_EQUAL,
                             policy.getMaxOfficeDaysPerWeek(), "MaxOffice_" + suffix);
+
+                    // Maximum working days (online + office) per week
+                    GRBLinExpr weeklyTotalWorkingDaysExpr = new GRBLinExpr();
+                    for (LocalDate date : weekDates) {
+                        weeklyTotalWorkingDaysExpr.addTerm(1.0, xOffice.get(variableKey(user.getId(), date)));
+                        weeklyTotalWorkingDaysExpr.addTerm(1.0, xOnline.get(variableKey(user.getId(), date)));
+                    }
+                    model.addConstr(weeklyTotalWorkingDaysExpr, GRB.EQUAL,
+                            policy.getWorkingDaysPerWeek(), "MaxWorkingDays_" + suffix);
                 }
             }
 
@@ -132,7 +149,7 @@ public class ScheduleGenerationAsyncService {
                 for (int i = 0; i <= workDates.size() - (maxConsecutiveOfficeDays + 1); i++) {
                     GRBLinExpr consecutiveExpr = new GRBLinExpr();
                     for (int k = 0; k <= maxConsecutiveOfficeDays; k++) {
-                        consecutiveExpr.addTerm(1.0, x.get(variableKey(user.getId(), workDates.get(i + k))));
+                        consecutiveExpr.addTerm(1.0, xOffice.get(variableKey(user.getId(), workDates.get(i + k))));
                     }
                     model.addConstr(consecutiveExpr, GRB.LESS_EQUAL, maxConsecutiveOfficeDays,
                             "MaxConsecutive_User_" + user.getId() + "_" + i);
@@ -160,7 +177,7 @@ public class ScheduleGenerationAsyncService {
 
                     GRBLinExpr memberSum = new GRBLinExpr();
                     for (User member : members) {
-                        memberSum.addTerm(1.0, x.get(variableKey(member.getId(), date)));
+                        memberSum.addTerm(1.0, xOffice.get(variableKey(member.getId(), date)));
                     }
 
                     GRBLinExpr lowerBound = new GRBLinExpr();
@@ -203,7 +220,7 @@ public class ScheduleGenerationAsyncService {
 
                 for (LocalDate date : workDates) {
                     if (preferredDays.contains(date.getDayOfWeek())) {
-                        objective.addTerm(-0.4, x.get(variableKey(user.getId(), date)));
+                        objective.addTerm(-0.4, xOffice.get(variableKey(user.getId(), date)));
                     }
                 }
 
@@ -213,12 +230,12 @@ public class ScheduleGenerationAsyncService {
 
                     GRBLinExpr week1Sum = new GRBLinExpr();
                     for (LocalDate d : datesByWeek.get(wk1)) {
-                        week1Sum.addTerm(1.0, x.get(variableKey(user.getId(), d)));
+                        week1Sum.addTerm(1.0, xOffice.get(variableKey(user.getId(), d)));
                     }
 
                     GRBLinExpr week2Sum = new GRBLinExpr();
                     for (LocalDate d : datesByWeek.get(wk2)) {
-                        week2Sum.addTerm(1.0, x.get(variableKey(user.getId(), d)));
+                        week2Sum.addTerm(1.0, xOffice.get(variableKey(user.getId(), d)));
                     }
 
                     GRBVar diffVar = model.addVar(0.0, GRB.INFINITY, 0.0, GRB.CONTINUOUS,
@@ -245,8 +262,8 @@ public class ScheduleGenerationAsyncService {
                     LocalDate today = workDates.get(di);
                     LocalDate tomorrow = workDates.get(di + 1);
                     if (ChronoUnit.DAYS.between(today, tomorrow) == 1) {
-                        objective.addTerm(-0.1, x.get(variableKey(user.getId(), today)));
-                        objective.addTerm(-0.1, x.get(variableKey(user.getId(), tomorrow)));
+                        objective.addTerm(-0.1, xOffice.get(variableKey(user.getId(), today)));
+                        objective.addTerm(-0.1, xOffice.get(variableKey(user.getId(), tomorrow)));
                     }
                 }
             }
@@ -273,6 +290,7 @@ public class ScheduleGenerationAsyncService {
                         List<String> capacityDates = new ArrayList<>();
                         Map<String, List<String>> minOfficeByWeek = new LinkedHashMap<>();
                         Map<String, List<String>> maxOfficeByWeek = new LinkedHashMap<>();
+                        Map<String, List<String>> maxWorkingDaysByWeek = new LinkedHashMap<>();
                         List<String> consecutiveUsers = new ArrayList<>();
                         List<String> teamSharedDaysIssues = new ArrayList<>();
                         Map<String, List<String>> coPresenceIssues = new LinkedHashMap<>();
@@ -333,6 +351,25 @@ public class ScheduleGenerationAsyncService {
                                                 String emailDisplay = user != null ? user.getEmail()
                                                         : "User ID " + userId;
                                                 maxOfficeByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>())
+                                                        .add(emailDisplay);
+                                            } catch (NumberFormatException ignored) {
+                                            }
+                                        }
+                                    }
+                                } else if (name.startsWith("MaxWorkingDays_")) {
+                                    String details = name.substring("MaxWorkingDays_".length());
+                                    if (details.startsWith("User_")) {
+                                        String sub = details.substring("User_".length());
+                                        int underscoreIdx = sub.indexOf('_');
+                                        if (underscoreIdx != -1) {
+                                            String userIdStr = sub.substring(0, underscoreIdx);
+                                            String weekKey = sub.substring(underscoreIdx + 1);
+                                            try {
+                                                Long userId = Long.parseLong(userIdStr);
+                                                User user = userMap.get(userId);
+                                                String emailDisplay = user != null ? user.getEmail()
+                                                        : "User ID " + userId;
+                                                maxWorkingDaysByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>())
                                                         .add(emailDisplay);
                                             } catch (NumberFormatException ignored) {
                                             }
@@ -445,6 +482,23 @@ public class ScheduleGenerationAsyncService {
                             }
                         }
 
+                        if (!maxWorkingDaysByWeek.isEmpty()) {
+                            hasIssue = true;
+                            sb.append(String.format("\n- Weekly Maximum Working Days (Max %d days allowed):\n",
+                                    policy.getWorkingDaysPerWeek()));
+                            List<String> sortedWeekKeys = maxWorkingDaysByWeek.keySet().stream().sorted()
+                                    .collect(Collectors.toList());
+                            for (String weekKey : sortedWeekKeys) {
+                                List<String> userEmails = maxWorkingDaysByWeek.get(weekKey);
+                                if (userEmails != null && !userEmails.isEmpty()) {
+                                    List<String> uniqueEmails = userEmails.stream().distinct().sorted()
+                                            .collect(Collectors.toList());
+                                    sb.append("  * In week ").append(weekKey).append(" for: ")
+                                            .append(String.join(", ", uniqueEmails)).append("\n");
+                                }
+                            }
+                        }
+
                         if (!consecutiveUsers.isEmpty()) {
                             hasIssue = true;
                             sb.append(String.format("\n- Maximum Consecutive Office Days (Max %d days allowed):\n",
@@ -506,13 +560,20 @@ public class ScheduleGenerationAsyncService {
             run.setNumIterations(model.get(GRB.DoubleAttr.IterCount));
             run.setNumNodes(model.get(GRB.DoubleAttr.NodeCount));
 
-            Map<Long, Map<LocalDate, Boolean>> solution = new HashMap<>();
+            Map<Long, Map<LocalDate, WorkMode>> solution = new HashMap<>();
             for (User user : users) {
-                Map<LocalDate, Boolean> userSchedule = new HashMap<>();
+                Map<LocalDate, WorkMode> userSchedule = new HashMap<>();
                 for (LocalDate date : workDates) {
-                    boolean inOffice = x.get(variableKey(user.getId(), date))
-                            .get(GRB.DoubleAttr.X) > 0.5;
-                    userSchedule.put(date, inOffice);
+                    String key = variableKey(user.getId(), date);
+                    boolean inOffice = xOffice.get(key).get(GRB.DoubleAttr.X) > 0.5;
+                    boolean online = xOnline.get(key).get(GRB.DoubleAttr.X) > 0.5;
+                    if (inOffice) {
+                        userSchedule.put(date, WorkMode.OFFICE);
+                    } else if (online) {
+                        userSchedule.put(date, WorkMode.ONLINE);
+                    } else {
+                        userSchedule.put(date, WorkMode.OFF);
+                    }
                 }
                 solution.put(user.getId(), userSchedule);
             }

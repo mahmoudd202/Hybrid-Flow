@@ -36,7 +36,7 @@ public class ScheduleGenerationPersistenceService {
             List<Team> teams,
             List<User> users,
             List<LocalDate> workDates,
-            Map<Long, Map<LocalDate, Boolean>> solution,
+            Map<Long, Map<LocalDate, WorkMode>> solution,
             PlanningPolicy policy,
             LocalDate startDate,
             LocalDate endDate) {
@@ -59,16 +59,16 @@ public class ScheduleGenerationPersistenceService {
         List<ScheduleEntry> entries = new ArrayList<>();
 
         for (User user : users) {
-            Map<LocalDate, Boolean> userSolution = solution.get(user.getId());
+            Map<LocalDate, WorkMode> userSolution = solution.get(user.getId());
 
             for (LocalDate date : workDates) {
-                boolean inOffice = userSolution.getOrDefault(date, false);
+                WorkMode mode = userSolution.getOrDefault(date, WorkMode.ONLINE);
 
                 ScheduleEntry entry = new ScheduleEntry();
                 entry.setSchedule(teamSchedules.get(user.getTeam().getId()));
                 entry.setUser(user);
                 entry.setDate(date);
-                entry.setWorkMode(inOffice ? WorkMode.OFFICE : WorkMode.ONLINE);
+                entry.setWorkMode(mode);
 
                 entries.add(entry);
             }
