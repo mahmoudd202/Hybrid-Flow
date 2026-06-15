@@ -68,15 +68,19 @@ public class UserService {
             throw new BusinessValidationException("You cannot change the role of an employee from another company.");
         }
 
+        if (employeeToUpdate.getRole() == Role.MANAGER && newRole == Role.HR) {
+            throw new BusinessValidationException("Cannot change role from MANAGER to HR directly. Please change the manager to an EMPLOYEE and assign another manager first, then change the old manager to HR.");
+        }
+
         if (newRole == Role.MANAGER) {
             if (employeeToUpdate.getTeam() == null) {
                 throw new BusinessValidationException(
                         "An employee must be assigned to a team before becoming a manager.");
             }
-            if (employeeToUpdate.getTeam().getManager() != null &&
-                    !employeeToUpdate.getTeam().getManager().getId().equals(employeeToUpdate.getId())) {
-                throw new BusinessValidationException(
-                        "The team \'" + employeeToUpdate.getTeam().getName() + "\' already has a manager.");
+            User oldManager = employeeToUpdate.getTeam().getManager();
+            if (oldManager != null && !oldManager.getId().equals(employeeToUpdate.getId())) {
+                oldManager.setRole(Role.EMPLOYEE);
+                userRepository.save(oldManager);
             }
             employeeToUpdate.getTeam().setManager(employeeToUpdate);
             teamRepository.save(employeeToUpdate.getTeam());
@@ -88,6 +92,9 @@ public class UserService {
             }
         }
 
+        if (newRole == Role.HR) {
+            employeeToUpdate.setTeam(null);
+        }
         employeeToUpdate.setRole(newRole);
         User updatedUser = userRepository.save(employeeToUpdate);
 
