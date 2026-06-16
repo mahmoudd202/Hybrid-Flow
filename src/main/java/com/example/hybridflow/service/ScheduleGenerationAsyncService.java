@@ -116,11 +116,16 @@ public class ScheduleGenerationAsyncService {
             Map<String, List<LocalDate>> datesByWeek = workDates.stream()
                     .collect(Collectors.groupingBy(
                             date -> date.get(iso.weekBasedYear()) + "-W" + date.get(iso.weekOfWeekBasedYear())));
+            Map<String, Integer> targetWorkingDaysByWeek = datesByWeek.entrySet().stream()
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            entry -> Math.min(policy.getWorkingDaysPerWeek(), entry.getValue().size())));
 
             for (User user : users) {
                 for (Map.Entry<String, List<LocalDate>> weekEntry : datesByWeek.entrySet()) {
                     String weekKey = weekEntry.getKey();
                     List<LocalDate> weekDates = weekEntry.getValue();
+                    int targetWorkingDays = targetWorkingDaysByWeek.get(weekKey);
 
                     GRBLinExpr weeklyOfficeDaysExpr = new GRBLinExpr();
                     for (LocalDate date : weekDates) {
@@ -140,7 +145,7 @@ public class ScheduleGenerationAsyncService {
                         weeklyTotalWorkingDaysExpr.addTerm(1.0, xOnline.get(variableKey(user.getId(), date)));
                     }
                     model.addConstr(weeklyTotalWorkingDaysExpr, GRB.EQUAL,
-                            policy.getWorkingDaysPerWeek(), "MaxWorkingDays_" + suffix);
+                            targetWorkingDays, "WorkingDays_" + suffix);
                 }
             }
 
@@ -290,7 +295,7 @@ public class ScheduleGenerationAsyncService {
                         List<String> capacityDates = new ArrayList<>();
                         Map<String, List<String>> minOfficeByWeek = new LinkedHashMap<>();
                         Map<String, List<String>> maxOfficeByWeek = new LinkedHashMap<>();
-                        Map<String, List<String>> maxWorkingDaysByWeek = new LinkedHashMap<>();
+                        Map<String, List<String>> workingDaysByWeek = new LinkedHashMap<>();
                         List<String> consecutiveUsers = new ArrayList<>();
                         List<String> teamSharedDaysIssues = new ArrayList<>();
                         Map<String, List<String>> coPresenceIssues = new LinkedHashMap<>();
@@ -356,8 +361,10 @@ public class ScheduleGenerationAsyncService {
                                             }
                                         }
                                     }
-                                } else if (name.startsWith("MaxWorkingDays_")) {
-                                    String details = name.substring("MaxWorkingDays_".length());
+                                } else if (name.startsWith("WorkingDays_") || name.startsWith("MaxWorkingDays_")) {
+                                    String details = name.startsWith("WorkingDays_")
+                                            ? name.substring("WorkingDays_".length())
+                                            : name.substring("MaxWorkingDays_".length());
                                     if (details.startsWith("User_")) {
                                         String sub = details.substring("User_".length());
                                         int underscoreIdx = sub.indexOf('_');
@@ -369,7 +376,7 @@ public class ScheduleGenerationAsyncService {
                                                 User user = userMap.get(userId);
                                                 String emailDisplay = user != null ? user.getEmail()
                                                         : "User ID " + userId;
-                                                maxWorkingDaysByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>())
+                                                workingDaysByWeek.computeIfAbsent(weekKey, k -> new ArrayList<>())
                                                         .add(emailDisplay);
                                             } catch (NumberFormatException ignored) {
                                             }
@@ -482,18 +489,24 @@ public class ScheduleGenerationAsyncService {
                             }
                         }
 
-                        if (!maxWorkingDaysByWeek.isEmpty()) {
+                        if (!workingDaysByWeek.isEmpty()) {
                             hasIssue = true;
-                            sb.append(String.format("\n- Weekly Maximum Working Days (Max %d days allowed):\n",
+                            sb.append(String.format("\n- Weekly Working Days (%d days expected in full weeks):\n",
                                     policy.getWorkingDaysPerWeek()));
-                            List<String> sortedWeekKeys = maxWorkingDaysByWeek.keySet().stream().sorted()
+                            List<String> sortedWeekKeys = workingDaysByWeek.keySet().stream().sorted()
                                     .collect(Collectors.toList());
                             for (String weekKey : sortedWeekKeys) {
-                                List<String> userEmails = maxWorkingDaysByWeek.get(weekKey);
+                                List<String> userEmails = workingDaysByWeek.get(weekKey);
                                 if (userEmails != null && !userEmails.isEmpty()) {
                                     List<String> uniqueEmails = userEmails.stream().distinct().sorted()
                                             .collect(Collectors.toList());
-                                    sb.append("  * In week ").append(weekKey).append(" for: ")
+                                    int selectedWeekdays = datesByWeek.getOrDefault(weekKey, List.of()).size();
+                                    int requiredDays = Math.min(policy.getWorkingDaysPerWeek(), selectedWeekdays);
+                                    sb.append("  * In week ").append(weekKey)
+                                            .append(", the selected range contains ")
+                                            .append(selectedWeekdays).append(" weekday(s), so each employee must have ")
+                                            .append(requiredDays)
+                                            .append(" scheduled working day(s) within that partial week. Conflict for: ")
                                             .append(String.join(", ", uniqueEmails)).append("\n");
                                 }
                             }

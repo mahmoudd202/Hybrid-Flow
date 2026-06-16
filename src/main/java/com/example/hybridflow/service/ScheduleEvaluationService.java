@@ -72,6 +72,11 @@ public class ScheduleEvaluationService {
 
         WeekFields iso = WeekFields.ISO;
         Map<String, List<LocalDate>> allDatesByWeek = buildDatesByWeek(startDate, endDate, iso);
+        List<LocalDate> planningWorkDates = buildWorkDates(startDate, endDate);
+        Map<LocalDate, Integer> workDatePosition = new HashMap<>();
+        for (int i = 0; i < planningWorkDates.size(); i++) {
+            workDatePosition.put(planningWorkDates.get(i), i);
+        }
 
         for (User user : users) {
             List<ScheduleEntry> entries = userScheduleEntries.getOrDefault(user.getId(), Collections.emptyList());
@@ -136,20 +141,27 @@ public class ScheduleEvaluationService {
             breakdown.put("preferenceSatisfaction", String.format("%.2f", preferenceSatisfactionScore));
 
             double distributionBalanceScore = 1.0;
-            if (totalWorkDays > 0 && officeDays > 0) {
+            if (officeDays > 1 && planningWorkDates.size() > 1) {
                 List<LocalDate> officeDatesSorted = entries.stream()
                         .filter(e -> e.getWorkMode() == WorkMode.OFFICE)
                         .map(ScheduleEntry::getDate)
+                        .filter(workDatePosition::containsKey)
                         .sorted()
                         .collect(Collectors.toList());
 
-                LocalDate firstOfficeDate = officeDatesSorted.get(0);
-                LocalDate lastOfficeDate = officeDatesSorted.get(officeDatesSorted.size() - 1);
+                if (officeDatesSorted.size() > 1) {
+                    double idealGap = (double) (planningWorkDates.size() - 1) / (officeDatesSorted.size() - 1);
+                    double totalDeviation = 0.0;
 
-                long workDaySpan = countWeekdays(firstOfficeDate, lastOfficeDate);
+                    for (int i = 1; i < officeDatesSorted.size(); i++) {
+                        int previous = workDatePosition.get(officeDatesSorted.get(i - 1));
+                        int current = workDatePosition.get(officeDatesSorted.get(i));
+                        totalDeviation += Math.abs((current - previous) - idealGap);
+                    }
 
-                if (workDaySpan > 0) {
-                    distributionBalanceScore = (double) officeDays / workDaySpan;
+                    double averageDeviation = totalDeviation / (officeDatesSorted.size() - 1);
+                    double tolerance = Math.max(1.0, idealGap);
+                    distributionBalanceScore = 1.0 - (averageDeviation / tolerance);
                 }
             }
             distributionBalanceScore = Math.min(1.0, Math.max(0.0, distributionBalanceScore));
@@ -169,21 +181,6 @@ public class ScheduleEvaluationService {
         return scores;
     }
 
-    private long countWeekdays(LocalDate from, LocalDate to) {
-        if (from.isAfter(to))
-            return 0;
-        long count = 0;
-        LocalDate cursor = from;
-        while (!cursor.isAfter(to)) {
-            DayOfWeek dow = cursor.getDayOfWeek();
-            if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY) {
-                count++;
-            }
-            cursor = cursor.plusDays(1);
-        }
-        return count;
-    }
-
     private Map<String, List<LocalDate>> buildDatesByWeek(LocalDate startDate, LocalDate endDate, WeekFields iso) {
         Map<String, List<LocalDate>> result = new LinkedHashMap<>();
         LocalDate cursor = startDate;
@@ -192,6 +189,19 @@ public class ScheduleEvaluationService {
             if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY) {
                 String weekKey = cursor.get(iso.weekBasedYear()) + "-W" + cursor.get(iso.weekOfWeekBasedYear());
                 result.computeIfAbsent(weekKey, k -> new ArrayList<>()).add(cursor);
+            }
+            cursor = cursor.plusDays(1);
+        }
+        return result;
+    }
+
+    private List<LocalDate> buildWorkDates(LocalDate startDate, LocalDate endDate) {
+        List<LocalDate> result = new ArrayList<>();
+        LocalDate cursor = startDate;
+        while (!cursor.isAfter(endDate)) {
+            DayOfWeek dow = cursor.getDayOfWeek();
+            if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY) {
+                result.add(cursor);
             }
             cursor = cursor.plusDays(1);
         }
