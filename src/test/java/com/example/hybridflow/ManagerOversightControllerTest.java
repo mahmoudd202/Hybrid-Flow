@@ -257,14 +257,20 @@ class ManagerOversightControllerTest {
 
         @Test
         void meetingCrudCycle() throws Exception {
+                LocalDate meetingDate = LocalDate.now().plusDays(2);
+                com.example.hybridflow.entity.User managerUser = userRepository.findByEmail("manager.a@techflow.com").orElseThrow();
+                scheduleEntryRepository.findPublishedEntryForUserOnDate(managerUser.getId(), meetingDate)
+                                .ifPresent(entry -> {
+                                        entry.setWorkMode(com.example.hybridflow.entity.WorkMode.OFFICE);
+                                        scheduleEntryRepository.save(entry);
+                                });
+
                 String createBody = objectMapper.writeValueAsString(Map.of(
                                 "title", "Test Meeting",
                                 "startTime",
-                                LocalDateTime.now().plusDays(2).withHour(14).withMinute(0).withSecond(0).withNano(0)
-                                                .toString(),
+                                meetingDate.atTime(14, 0, 0, 0).toString(),
                                 "endTime",
-                                LocalDateTime.now().plusDays(2).withHour(15).withMinute(0).withSecond(0).withNano(0)
-                                                .toString(),
+                                meetingDate.atTime(15, 0, 0, 0).toString(),
                                 "officeId", officeId,
                                 "type", "OFFICE",
                                 "participatingTeamIds", List.of(backendDevsTeamId)));
@@ -293,11 +299,9 @@ class ManagerOversightControllerTest {
                 String updateBody = objectMapper.writeValueAsString(Map.of(
                                 "title", "Updated Meeting Title",
                                 "startTime",
-                                LocalDateTime.now().plusDays(2).withHour(14).withMinute(0).withSecond(0).withNano(0)
-                                                .toString(),
+                                meetingDate.atTime(14, 0, 0, 0).toString(),
                                 "endTime",
-                                LocalDateTime.now().plusDays(2).withHour(15).withMinute(0).withSecond(0).withNano(0)
-                                                .toString(),
+                                meetingDate.atTime(15, 0, 0, 0).toString(),
                                 "officeId", officeId,
                                 "type", "OFFICE",
                                 "participatingTeamIds", List.of(backendDevsTeamId)));

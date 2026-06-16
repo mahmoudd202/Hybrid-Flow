@@ -13,6 +13,7 @@ import com.example.hybridflow.repository.MeetingRepository;
 import com.example.hybridflow.repository.OfficeRepository;
 import com.example.hybridflow.repository.TeamRepository;
 import com.example.hybridflow.repository.UserRepository;
+import com.example.hybridflow.repository.ScheduleEntryRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -27,18 +28,21 @@ public class MeetingService {
     private final OfficeRepository officeRepository;
     private final UserRepository userRepository;
     private final ScheduleAvailabilityService scheduleAvailabilityService;
+    private final ScheduleEntryRepository scheduleEntryRepository;
 
     public MeetingService(
             MeetingRepository meetingRepository,
             TeamRepository teamRepository,
             OfficeRepository officeRepository,
             UserRepository userRepository,
-            ScheduleAvailabilityService scheduleAvailabilityService) {
+            ScheduleAvailabilityService scheduleAvailabilityService,
+            ScheduleEntryRepository scheduleEntryRepository) {
         this.meetingRepository = meetingRepository;
         this.teamRepository = teamRepository;
         this.officeRepository = officeRepository;
         this.userRepository = userRepository;
         this.scheduleAvailabilityService = scheduleAvailabilityService;
+        this.scheduleEntryRepository = scheduleEntryRepository;
     }
 
     @Transactional
@@ -85,6 +89,8 @@ public class MeetingService {
         }
 
         LocalDate meetingDate = dto.getStartTime().toLocalDate();
+
+        validateManagerAvailability(dto, host, meetingDate);
 
         List<User> affectedUsers = collectUniqueUsersFromTeams(teams);
 
@@ -168,6 +174,8 @@ public class MeetingService {
         }
 
         LocalDate meetingDate = dto.getStartTime().toLocalDate();
+
+        validateManagerAvailability(dto, requester, meetingDate);
 
         List<User> affectedUsers = collectUniqueUsersFromTeams(teams);
 
@@ -368,5 +376,19 @@ public class MeetingService {
                 m.getType() == MeetingType.ONLINE ? null : (m.getOffice() != null ? m.getOffice().getName() : null),
                 teamNames,
                 excludedUsers != null ? excludedUsers : List.of());
+    }
+
+    private void validateManagerAvailability(MeetingRequestDTO dto, User hostOrRequester, LocalDate meetingDate) {
+        if (dto.getType() == MeetingType.OFFICE && hostOrRequester != null && hostOrRequester.getTeam() != null) {
+            User manager = hostOrRequester.getTeam().getManager();
+            if (manager != null) {
+                Optional<ScheduleEntry> managerEntryOpt = scheduleEntryRepository
+                        .findPublishedEntryForUserOnDate(manager.getId(), meetingDate);
+                if (managerEntryOpt.isPresent() && managerEntryOpt.get().getWorkMode() == WorkMode.ONLINE) {
+                    throw new BusinessValidationException(
+                            "Cannot schedule an office meeting because you are working online on this day");
+                }
+            }
+        }
     }
 }
