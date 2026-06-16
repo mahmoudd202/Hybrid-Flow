@@ -66,6 +66,8 @@ public class AuthService {
                 .teamName(user.getTeam() != null ? user.getTeam().getName() : null)
                 .firstName(profile != null ? profile.getFirstName() : null)
                 .lastName(profile != null ? profile.getLastName() : null)
+                .nationality(profile != null ? profile.getNationality() : null)
+                .dateOfBirth(profile != null ? profile.getDateOfBirth() : null)
                 .build();
 
         return new AuthResponse(jwtService.generateToken(user), userDto);

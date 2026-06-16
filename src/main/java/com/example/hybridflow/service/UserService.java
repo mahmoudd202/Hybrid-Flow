@@ -2,6 +2,7 @@ package com.example.hybridflow.service;
 
 import com.example.hybridflow.dto.CurrentUserResponseDTO;
 import com.example.hybridflow.dto.EmployeeDetailsResponseDTO;
+import com.example.hybridflow.dto.UpdateProfileRequest;
 import com.example.hybridflow.entity.Role;
 import com.example.hybridflow.entity.Team;
 import com.example.hybridflow.entity.User;
@@ -212,7 +213,31 @@ public class UserService {
                 .teamName(user.getTeam() != null ? user.getTeam().getName() : null)
                 .firstName(profile != null ? profile.getFirstName() : null)
                 .lastName(profile != null ? profile.getLastName() : null)
+                .nationality(profile != null ? profile.getNationality() : null)
+                .dateOfBirth(profile != null ? profile.getDateOfBirth() : null)
                 .build();
+    }
+
+    @Transactional
+    public CurrentUserResponseDTO updateProfile(User currentUser, UpdateProfileRequest request) {
+        User user = userRepository.findById(currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        UserProfile profile = userProfileRepository.findByUserId(user.getId())
+                .orElseGet(() -> {
+                    UserProfile newProfile = new UserProfile();
+                    newProfile.setUser(user);
+                    return newProfile;
+                });
+
+        profile.setFirstName(request.getFirstName());
+        profile.setLastName(request.getLastName());
+        profile.setNationality(request.getNationality());
+        profile.setDateOfBirth(request.getDateOfBirth());
+
+        userProfileRepository.save(profile);
+
+        return getMe(user);
     }
 
     @Transactional(readOnly = true)

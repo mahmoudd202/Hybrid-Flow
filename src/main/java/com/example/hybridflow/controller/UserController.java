@@ -4,6 +4,7 @@ import com.example.hybridflow.dto.CurrentUserResponseDTO;
 import com.example.hybridflow.dto.EmployeeDetailsResponseDTO;
 import com.example.hybridflow.dto.MoveEmployeeRequestDTO;
 import com.example.hybridflow.dto.UpdateRoleRequestDTO;
+import com.example.hybridflow.dto.UpdateProfileRequest;
 import com.example.hybridflow.security.CustomUserDetails;
 import com.example.hybridflow.service.UserService;
 
@@ -107,5 +108,15 @@ public class UserController {
             return ResponseEntity.status(401).build();
         }
         return ResponseEntity.ok(userService.getMe(userDetails.getUser()));
+    }
+
+    @PatchMapping("/me/profile")
+    public ResponseEntity<CurrentUserResponseDTO> updateProfile(
+            @Valid @RequestBody UpdateProfileRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+        return ResponseEntity.ok(userService.updateProfile(userDetails.getUser(), request));
     }
 }
