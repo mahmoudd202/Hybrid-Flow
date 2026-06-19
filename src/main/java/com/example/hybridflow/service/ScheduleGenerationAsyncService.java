@@ -169,11 +169,6 @@ public class ScheduleGenerationAsyncService {
                 if (members.isEmpty())
                     continue;
 
-                int teamSize = members.size();
-                int thresholdCount = (int) Math.ceil(
-                        (policy.getCoPresenceThresholdPercentagePerDay() / 100.0) * teamSize);
-                thresholdCount = Math.max(1, thresholdCount);
-
                 Map<LocalDate, GRBVar> y = new HashMap<>();
                 for (LocalDate date : workDates) {
                     GRBVar yVar = model.addVar(0.0, 1.0, 0.0, GRB.BINARY,
@@ -186,24 +181,27 @@ public class ScheduleGenerationAsyncService {
                     }
 
                     GRBLinExpr lowerBound = new GRBLinExpr();
-                    lowerBound.addTerm(thresholdCount, yVar);
+                    lowerBound.addTerm(members.size(), yVar);
                     model.addConstr(memberSum, GRB.GREATER_EQUAL, lowerBound,
-                            "CoPresenceLower_" + team.getId() + "_" + date);
+                            "SharedDayLower_" + team.getId() + "_" + date);
 
                     GRBLinExpr upperBound = new GRBLinExpr();
-                    upperBound.addConstant(thresholdCount - 1);
-                    upperBound.addTerm(teamSize, yVar);
+                    upperBound.addConstant(members.size() - 1);
+                    upperBound.addTerm(1.0, yVar);
                     model.addConstr(memberSum, GRB.LESS_EQUAL, upperBound,
-                            "CoPresenceUpper_" + team.getId() + "_" + date);
+                            "SharedDayUpper_" + team.getId() + "_" + date);
                 }
 
-                GRBLinExpr sharedDaysExpr = new GRBLinExpr();
-                for (LocalDate date : workDates) {
-                    sharedDaysExpr.addTerm(1.0, y.get(date));
+                for (Map.Entry<String, List<LocalDate>> weekEntry : datesByWeek.entrySet()) {
+                    String weekKey = weekEntry.getKey();
+                    GRBLinExpr sharedDaysExpr = new GRBLinExpr();
+                    for (LocalDate date : weekEntry.getValue()) {
+                        sharedDaysExpr.addTerm(1.0, y.get(date));
+                    }
+                    model.addConstr(sharedDaysExpr, GRB.GREATER_EQUAL,
+                            policy.getMinTeamSharedDays(),
+                            "MinSharedDays_Team_" + team.getId() + "_" + weekKey);
                 }
-                model.addConstr(sharedDaysExpr, GRB.GREATER_EQUAL,
-                        policy.getMinTeamSharedDays(),
-                        "MinSharedDays_Team_" + team.getId());
             }
 
             Map<Long, Set<DayOfWeek>> preferredDaysByUser = new HashMap<>();
@@ -400,13 +398,33 @@ public class ScheduleGenerationAsyncService {
                                         }
                                     }
                                 } else if (name.startsWith("MinSharedDays_Team_")) {
-                                    String teamIdStr = name.substring("MinSharedDays_Team_".length());
+                                    String details = name.substring("MinSharedDays_Team_".length());
+                                    int underscoreIdx = details.indexOf('_');
+                                    String teamIdStr = underscoreIdx == -1 ? details : details.substring(0, underscoreIdx);
+                                    String weekKey = underscoreIdx == -1 ? null : details.substring(underscoreIdx + 1);
                                     try {
                                         Long teamId = Long.parseLong(teamIdStr);
                                         Team team = teamMap.get(teamId);
                                         String teamName = team != null ? team.getName() : "Team ID " + teamId;
-                                        teamSharedDaysIssues.add(teamName);
+                                        teamSharedDaysIssues.add(weekKey == null
+                                                ? teamName
+                                                : teamName + " in week " + weekKey);
                                     } catch (NumberFormatException ignored) {
+                                    }
+                                } else if (name.startsWith("SharedDayLower_") || name.startsWith("SharedDayUpper_")) {
+                                    String details = name.substring(name.startsWith("SharedDayLower_")
+                                            ? "SharedDayLower_".length()
+                                            : "SharedDayUpper_".length());
+                                    int underscore = details.indexOf('_');
+                                    if (underscore != -1) {
+                                        String teamIdStr = details.substring(0, underscore);
+                                        try {
+                                            Long teamId = Long.parseLong(teamIdStr);
+                                            Team team = teamMap.get(teamId);
+                                            String teamName = team != null ? team.getName() : "Team ID " + teamId;
+                                            teamSharedDaysIssues.add(teamName);
+                                        } catch (NumberFormatException ignored) {
+                                        }
                                     }
                                 } else if (name.startsWith("CoPresenceLower_") || name.startsWith("CoPresenceUpper_")) {
                                     boolean isLower = name.startsWith("CoPresenceLower_");
@@ -524,7 +542,7 @@ public class ScheduleGenerationAsyncService {
 
                         if (!teamSharedDaysIssues.isEmpty()) {
                             hasIssue = true;
-                            sb.append(String.format("\n- Minimum Team Shared Days (%d days required):\n",
+                            sb.append(String.format("\n- Minimum Team Shared Days (%d days required per week):\n",
                                     policy.getMinTeamSharedDays()));
                             List<String> uniqueTeams = teamSharedDaysIssues.stream().distinct().sorted()
                                     .collect(Collectors.toList());
