@@ -173,7 +173,7 @@ public class UserService {
             throw new BusinessValidationException("HR accounts cannot be deactivated through this endpoint.");
         }
 
-        if (!employeeToDeactivate.isEnabled()) {
+        if (employeeToDeactivate.isDeactivated()) {
             throw new BusinessValidationException("Employee account is already deactivated.");
         }
 
@@ -189,6 +189,7 @@ public class UserService {
         }
 
         employeeToDeactivate.setEnabled(false);
+        employeeToDeactivate.setDeactivated(true);
         User updatedUser = userRepository.save(employeeToDeactivate);
 
         UserProfile userProfile = userProfileRepository.findByUserId(employeeId).orElse(null);

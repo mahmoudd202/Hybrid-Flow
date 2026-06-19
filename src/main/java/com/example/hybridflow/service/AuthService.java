@@ -49,6 +49,11 @@ public class AuthService {
             throw new BusinessValidationException("Invalid email or password.");
         }
 
+        if (user.isDeactivated()) {
+            throw new BusinessValidationException(
+                    "Your account has been deactivated. Please contact your HR or administrator.");
+        }
+
         if (!user.isEnabled()) {
             throw new BusinessValidationException(
                     "Account not yet verified. Please check your email for the OTP.");
@@ -110,6 +115,13 @@ public class AuthService {
 
         if (userOptional.isPresent()) {
             User user = userOptional.get();
+            if (user.isDeactivated()) {
+                return EmailCheckResponseDTO.builder()
+                        .status("NOT_AUTHORIZED")
+                        .redirectPath(null)
+                        .message("This account is deactivated. Please contact your HR.")
+                        .build();
+            }
             if (!user.isEnabled()) {
                 return EmailCheckResponseDTO.builder()
                         .status("NEEDS_REGISTRATION")
@@ -138,8 +150,14 @@ public class AuthService {
         Instant now = Instant.now();
 
         Optional<User> existingUserOpt = userRepository.findByEmail(email);
-        if (existingUserOpt.isPresent() && existingUserOpt.get().isEnabled()) {
-            throw new BusinessValidationException("A user with this email is already registered and active.");
+        if (existingUserOpt.isPresent()) {
+            User u = existingUserOpt.get();
+            if (u.isDeactivated()) {
+                throw new BusinessValidationException("This account is deactivated. Please contact your HR.");
+            }
+            if (u.isEnabled()) {
+                throw new BusinessValidationException("A user with this email is already registered and active.");
+            }
         }
 
         User user;
@@ -210,6 +228,10 @@ public class AuthService {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found."));
 
+        if (user.isDeactivated()) {
+            throw new BusinessValidationException("This account is deactivated. Please contact your HR.");
+        }
+
         if (user.isEnabled()) {
             throw new BusinessValidationException("Account is already verified. Please log in.");
         }
@@ -238,6 +260,10 @@ public class AuthService {
     public AuthActionResponse forgotPassword(ForgotPasswordRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+
+        if (user.isDeactivated()) {
+            throw new BusinessValidationException("This account is deactivated. Please contact your HR.");
+        }
 
         String otp = otpService.generateOtp();
         UserVerification verification = verificationRepository.findByUserId(user.getId())
@@ -283,6 +309,10 @@ public class AuthService {
     public AuthActionResponse resendOtp(ResendOtpRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+
+        if (user.isDeactivated()) {
+            throw new BusinessValidationException("This account is deactivated. Please contact your HR.");
+        }
 
         if (user.isEnabled()) {
             throw new BusinessValidationException("Account is already verified. Please log in.");

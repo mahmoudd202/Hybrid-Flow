@@ -28,6 +28,8 @@ import com.example.hybridflow.repository.TeamRepository;
 import com.example.hybridflow.security.JwtService;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -119,7 +121,13 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         Optional<User> existingByProvider = userRepository.findByProviderAndProviderId(provider, providerId);
 
         if (existingByProvider.isPresent()) {
-            String jwt = jwtService.generateToken(existingByProvider.get());
+            User user = existingByProvider.get();
+            if (user.isDeactivated()) {
+                response.sendRedirect(frontendBaseUrl + "/oauth/callback?error=deactivated&message=" +
+                        URLEncoder.encode("Your account has been deactivated. Please contact your HR.", StandardCharsets.UTF_8));
+                return;
+            }
+            String jwt = jwtService.generateToken(user);
             response.sendRedirect(frontendBaseUrl + "/oauth/callback?token=" + jwt);
             return;
         }
@@ -131,6 +139,11 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
                 && csvUser.get().getTeam() != null) {
 
             User user = csvUser.get();
+            if (user.isDeactivated()) {
+                response.sendRedirect(frontendBaseUrl + "/oauth/callback?error=deactivated&message=" +
+                        URLEncoder.encode("Your account has been deactivated. Please contact your HR.", StandardCharsets.UTF_8));
+                return;
+            }
             user.setProvider(provider);
             user.setProviderId(finalProviderId);
             user.setEnabled(true);

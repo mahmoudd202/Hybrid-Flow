@@ -14,6 +14,7 @@ public class User {
     private String email;
     private String password;
     private boolean enabled;
+    private boolean deactivated;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;

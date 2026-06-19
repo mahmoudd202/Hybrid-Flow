@@ -199,7 +199,8 @@ class HrEmployeeManagementControllerTest {
                 mockMvc.perform(post("/auth/login")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(loginBody))
-                                .andExpect(status().is4xxClientError());
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.message").value("Your account has been deactivated. Please contact your HR or administrator."));
         }
 
         @Test
