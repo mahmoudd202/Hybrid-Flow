@@ -298,6 +298,7 @@ public class UserService {
                 .id(employee.getId())
                 .email(employee.getEmail())
                 .enabled(employee.isEnabled())
+                .deactivated(employee.isDeactivated())
                 .role(employee.getRole());
 
         if (userProfile != null) {

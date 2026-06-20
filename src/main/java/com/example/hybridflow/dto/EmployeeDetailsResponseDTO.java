@@ -13,6 +13,7 @@ public class EmployeeDetailsResponseDTO {
     private String    email;
     private Role      role;
     private boolean   enabled;
+    private boolean   deactivated;
 
     private String    firstName;
     private String    lastName;
