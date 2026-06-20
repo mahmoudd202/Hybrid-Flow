@@ -17,6 +17,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.example.hybridflow.security.JwtAuthenticationFilter;
+import com.example.hybridflow.service.OAuthFailureHandler;
 import com.example.hybridflow.service.OAuthSuccessHandler;
 
 import java.util.Arrays;
@@ -28,11 +29,14 @@ public class SecurityConfig {
 
         private final JwtAuthenticationFilter jwtFilter;
         private final OAuthSuccessHandler oAuthSuccessHandler;
+        private final OAuthFailureHandler oAuthFailureHandler;
 
         public SecurityConfig(JwtAuthenticationFilter jwtFilter,
-                        OAuthSuccessHandler oAuthSuccessHandler) {
+                        OAuthSuccessHandler oAuthSuccessHandler,
+                        OAuthFailureHandler oAuthFailureHandler) {
                 this.jwtFilter = jwtFilter;
                 this.oAuthSuccessHandler = oAuthSuccessHandler;
+                this.oAuthFailureHandler = oAuthFailureHandler;
         }
 
         @Bean
@@ -52,7 +56,8 @@ public class SecurityConfig {
                                                 .permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2Login(oauth -> oauth
-                                                .successHandler(oAuthSuccessHandler))
+                                                .successHandler(oAuthSuccessHandler)
+                                                .failureHandler(oAuthFailureHandler))
                                 .exceptionHandling(ex -> ex
                                                 .defaultAuthenticationEntryPointFor(
                                                                 new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
