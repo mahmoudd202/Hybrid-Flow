@@ -59,7 +59,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
           from User u
           where u.team.id = :teamId
             and u.role in (com.example.hybridflow.entity.Role.EMPLOYEE, com.example.hybridflow.entity.Role.MANAGER)
-            and u.enabled = true
             and u.deactivated = false
       """)
   int countSchedulableUsersByTeamId(@Param("teamId") Long teamId);
@@ -70,7 +69,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
           join fetch u.team t
           where t.id in :teamIds
             and u.role in (com.example.hybridflow.entity.Role.EMPLOYEE, com.example.hybridflow.entity.Role.MANAGER)
-            and u.enabled = true
             and u.deactivated = false
           order by t.id asc, u.id asc
       """)

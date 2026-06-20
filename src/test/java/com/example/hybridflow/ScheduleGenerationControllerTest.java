@@ -123,7 +123,7 @@ class ScheduleGenerationControllerTest {
         }
 
         @Test
-        void schedulableQueriesExcludeDeactivatedUsers() {
+        void schedulableQueriesIncludePendingInvitesButExcludeDeactivatedUsers() {
                 User dev1 = userRepository.findByEmail("dev1@techflow.com")
                                 .orElseThrow(() -> new AssertionError("Seeded dev1 user must exist"));
                 Long teamId = dev1.getTeam().getId();
@@ -133,6 +133,18 @@ class ScheduleGenerationControllerTest {
                 boolean originalDeactivated = dev1.isDeactivated();
                 try {
                         dev1.setEnabled(false);
+                        dev1.setDeactivated(false);
+                        userRepository.save(dev1);
+
+                        List<User> pendingInviteLikeUsers = userRepository.findSchedulableUsersByTeamIds(List.of(teamId));
+
+                        assertThat(pendingInviteLikeUsers)
+                                        .extracting(User::getEmail)
+                                        .contains("dev1@techflow.com");
+                        assertThat(userRepository.countSchedulableUsersByTeamId(teamId))
+                                        .as("Pending invited users are disabled until sign-up, but still schedulable")
+                                        .isEqualTo(countBefore);
+
                         dev1.setDeactivated(true);
                         userRepository.save(dev1);
 
