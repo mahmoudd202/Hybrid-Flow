@@ -197,6 +197,45 @@ public class UserService {
         return toEmployeeDetailsResponseDTO(updatedUser, userProfile);
     }
 
+    @Transactional
+    public EmployeeDetailsResponseDTO activateEmployee(Long employeeId, User currentUser) {
+
+        if (currentUser.getCompany() == null) {
+            throw new BusinessValidationException("You are not assigned to a company.");
+        }
+
+        User employeeToActivate = userRepository.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found."));
+
+        if (employeeToActivate.getCompany() == null ||
+                !currentUser.getCompany().getId().equals(employeeToActivate.getCompany().getId())) {
+            throw new BusinessValidationException("You cannot activate an employee from another company.");
+        }
+
+        if (!employeeToActivate.isDeactivated() && employeeToActivate.isEnabled()) {
+            throw new BusinessValidationException("Employee account is already active.");
+        }
+
+        if (employeeToActivate.getRole() == Role.MANAGER && employeeToActivate.getTeam() != null) {
+            Team team = employeeToActivate.getTeam();
+            User currentManager = team.getManager();
+            if (currentManager != null && !currentManager.getId().equals(employeeToActivate.getId())) {
+                throw new BusinessValidationException(
+                        "Cannot activate this manager because their team already has another manager.");
+            }
+            team.setManager(employeeToActivate);
+            teamRepository.save(team);
+        }
+
+        employeeToActivate.setEnabled(true);
+        employeeToActivate.setDeactivated(false);
+        User updatedUser = userRepository.save(employeeToActivate);
+
+        UserProfile userProfile = userProfileRepository.findByUserId(employeeId).orElse(null);
+
+        return toEmployeeDetailsResponseDTO(updatedUser, userProfile);
+    }
+
     @Transactional(readOnly = true)
     public CurrentUserResponseDTO getMe(User currentUser) {
         User user = userRepository.findById(currentUser.getId())

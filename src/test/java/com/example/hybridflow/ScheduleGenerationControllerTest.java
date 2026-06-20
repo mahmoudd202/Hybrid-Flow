@@ -19,6 +19,8 @@ import org.springframework.test.annotation.DirtiesContext;
 import com.example.hybridflow.repository.OfficeRepository;
 import com.example.hybridflow.repository.PlanningPolicyRepository;
 import com.example.hybridflow.repository.TeamRepository;
+import com.example.hybridflow.repository.UserRepository;
+import com.example.hybridflow.entity.User;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -43,6 +45,8 @@ class ScheduleGenerationControllerTest {
         TeamRepository teamRepository;
         @Autowired
         PlanningPolicyRepository planningPolicyRepository;
+        @Autowired
+        UserRepository userRepository;
 
         MockMvc mockMvc;
         final ObjectMapper objectMapper = new ObjectMapper();
@@ -116,6 +120,35 @@ class ScheduleGenerationControllerTest {
                 assertThat(body.get("unavailableTeams").size())
                                 .as("No teams should be unavailable for this clean future date range")
                                 .isEqualTo(0);
+        }
+
+        @Test
+        void schedulableQueriesExcludeDeactivatedUsers() {
+                User dev1 = userRepository.findByEmail("dev1@techflow.com")
+                                .orElseThrow(() -> new AssertionError("Seeded dev1 user must exist"));
+                Long teamId = dev1.getTeam().getId();
+                int countBefore = userRepository.countSchedulableUsersByTeamId(teamId);
+
+                boolean originalEnabled = dev1.isEnabled();
+                boolean originalDeactivated = dev1.isDeactivated();
+                try {
+                        dev1.setEnabled(false);
+                        dev1.setDeactivated(true);
+                        userRepository.save(dev1);
+
+                        List<User> schedulableUsers = userRepository.findSchedulableUsersByTeamIds(List.of(teamId));
+
+                        assertThat(schedulableUsers)
+                                        .extracting(User::getEmail)
+                                        .doesNotContain("dev1@techflow.com");
+                        assertThat(userRepository.countSchedulableUsersByTeamId(teamId))
+                                        .as("Deactivated users must not count as schedulable")
+                                        .isEqualTo(countBefore - 1);
+                } finally {
+                        dev1.setEnabled(originalEnabled);
+                        dev1.setDeactivated(originalDeactivated);
+                        userRepository.save(dev1);
+                }
         }
 
         @Test

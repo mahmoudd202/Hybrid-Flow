@@ -89,6 +89,20 @@ public class UserController {
         return ResponseEntity.ok(deactivatedEmployee);
     }
 
+    @PatchMapping("/{employeeId}/activate")
+    @PreAuthorize("hasRole('HR')")
+    public ResponseEntity<EmployeeDetailsResponseDTO> activateEmployee(
+            @PathVariable Long employeeId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        EmployeeDetailsResponseDTO activatedEmployee = userService.activateEmployee(employeeId,
+                userDetails.getUser());
+        return ResponseEntity.ok(activatedEmployee);
+    }
+
     @GetMapping
     @PreAuthorize("hasAnyRole('HR', 'MANAGER', 'EMPLOYEE')")
     public ResponseEntity<List<EmployeeDetailsResponseDTO>> getAllEmployees(

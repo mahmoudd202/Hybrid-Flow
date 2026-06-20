@@ -204,6 +204,28 @@ class HrEmployeeManagementControllerTest {
         }
 
         @Test
+        void activateUserRestoresLogin() throws Exception {
+                mockMvc.perform(patch("/users/" + dev1Id + "/deactivate")
+                                .header("Authorization", "Bearer " + hrToken))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.enabled").value(false));
+
+                mockMvc.perform(patch("/users/" + dev1Id + "/activate")
+                                .header("Authorization", "Bearer " + hrToken))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.enabled").value(true));
+
+                String loginBody = objectMapper.writeValueAsString(
+                                Map.of("email", "dev1@techflow.com", "password", "password123"));
+
+                mockMvc.perform(post("/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(loginBody))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.accessToken").isString());
+        }
+
+        @Test
         void getAllEmployeesAsHrReturnsEmployeeList() throws Exception {
                 MvcResult result = mockMvc.perform(get("/users")
                                 .header("Authorization", "Bearer " + hrToken))
